@@ -40,6 +40,7 @@
         system: pkgs: {
           default = pkgs.mkShell {
             packages = [
+              pkgs.nix-unit
               pkgs.nixfmt
               pkgs.prettier
               pkgs.treefmt
