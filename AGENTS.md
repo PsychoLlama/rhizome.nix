@@ -10,3 +10,9 @@
 
 - `nix flake check` runs the test suite.
 - `nix-unit --flake .#libTests` runs it directly, with per-test output.
+
+# Style
+
+- Always prefer `lib` over `builtins`.
+- Use `lib.pipe` for complex expressions.
+- Use `/** ... */` docstrings.
