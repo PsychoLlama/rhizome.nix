@@ -1,5 +1,14 @@
 { lib }:
 
+# The rhizome test suite, exposed as the flake's `tests` output. This is
+# data, not a result: an attrset of `{ expr, expected }` cases, which is
+# the shape both `nix-unit` and `lib.runTests` take. Running it is
+# `tests/check.nix`'s job.
+#
+# To run it by hand, from the dev shell:
+#
+#   nix-unit --flake .#tests
+
 let
   plugin = import ../lib/plugin.nix { inherit lib; };
   mount = import ../lib/mounts/custom.nix { inherit lib; };
@@ -199,7 +208,7 @@ let
   fails = expr: !(lib.tryEval (lib.deepSeq expr expr)).success;
 in
 
-lib.runTests {
+{
   # ── Discovery and the namespace tree ──────────────────────────────────
 
   testNamespaceShape = {

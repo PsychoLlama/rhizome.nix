@@ -9,3 +9,4 @@
 # Testing
 
 - `nix flake check` runs the test suite.
+- `nix-unit --flake .#tests` runs it directly, with per-test output.
