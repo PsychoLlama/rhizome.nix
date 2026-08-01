@@ -10,6 +10,8 @@
 
 - `nix flake check` runs the test suite.
 - `nix-unit --flake .#libTests` runs it directly, with per-test output.
+- One file per suite in `tests/suites`, grouped by `tests/default.nix`, sharing `tests/{utils,fixtures}.nix`.
+- Use the `rhizome-tests` skill before writing or changing a test.
 
 # Style
 
