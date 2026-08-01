@@ -238,16 +238,20 @@ in
     ];
   };
 
+  # A subdirectory becomes a branch, and holds only what it contains.
   testNamespaceNests = {
-    expr = main.programs ? alpha;
-    expected = true;
+    expr = lib.attrNames main.programs;
+    expected = [ "alpha" ];
   };
 
   # The plugin is the only handle: modules are reached by navigating from
-  # it, not by stringifying them.
+  # it, not by stringifying them. `lib.toString` rather than
+  # interpolation on the right — the handle is `src` as a string, and
+  # interpolating the path would copy the directory to a store path of
+  # its own instead.
   testPluginIsAddressable = {
-    expr = lib.hasSuffix "/main/modules" "${main}";
-    expected = true;
+    expr = "${main}";
+    expected = lib.toString ./fixtures/main/modules;
   };
 
   testModulesAreNotAddressable = {
@@ -608,9 +612,17 @@ in
 
   # ── Cross-plugin ──────────────────────────────────────────────────────
 
+  # Enabling a module in one plugin leaves its peer alone: two mounts,
+  # two independent namespaces.
   testPluginsMountSideBySide = {
-    expr = paired.config."${side}".probe.enable && !paired.config."${main}".programs.alpha.enable;
-    expected = true;
+    expr = {
+      side = paired.config."${side}".probe.enable;
+      main = paired.config."${main}".programs.alpha.enable;
+    };
+    expected = {
+      side = true;
+      main = false;
+    };
   };
 
   # A module reads another plugin by handle, through `global`.
