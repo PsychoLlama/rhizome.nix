@@ -82,13 +82,13 @@ Definition and instantiation are separate calls: `plugin` returns a function, an
 ```nix
 let
   # Definition, then instantiation.
-  dotfiles = import ./modules { rhizome = inputs.rhizome.lib; } { };
+  myPlugin = import ./modules { rhizome = inputs.rhizome.lib; } { };
 in
 
 nixpkgs.lib.nixosSystem {
   modules = [
-    (inputs.rhizome.lib.mounts.nixos { inherit dotfiles; })
-    { "${dotfiles}".programs.git.enable = true; }
+    (inputs.rhizome.lib.mounts.nixos { inherit myPlugin; })
+    { "${myPlugin}".programs.git.enable = true; }
   ];
 }
 ```

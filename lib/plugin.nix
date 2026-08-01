@@ -17,8 +17,8 @@ in
   consumers configure it as ordinary validated config:
 
   ```nix
-  config."${dotfiles}".programs.git.enable = true;
-  config."${dotfiles}".identity.email = "...";
+  config."${myPlugin}".programs.git.enable = true;
+  config."${myPlugin}".identity.email = "...";
   ```
 
   Inside the plugin the handle is implied: a module's own `config` block
@@ -33,7 +33,7 @@ in
 
   ```nix
   inputs = {
-    hosts = throw "dotfiles: input `hosts` is required.";
+    hosts = throw "myPlugin: input `hosts` is required.";
     secrets = null;
   };
   ```
@@ -56,9 +56,9 @@ in
   ```nix
   let
     hosts = inputs.hosts.plugin { };
-    dotfiles = inputs.dotfiles.plugin { inherit hosts; };
+    myPlugin = inputs.myPlugin.plugin { inherit hosts; };
   in
-  rhizome.mounts.nixos { inherit dotfiles hosts; }
+  rhizome.mounts.nixos { inherit myPlugin hosts; }
   ```
 
   The binding name is used only for error messages.

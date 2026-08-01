@@ -6,7 +6,7 @@
   nested option tree beneath it, mirroring the directory layout:
 
   ```nix
-  options."${dotfiles}".programs.git.enable
+  options."${myPlugin}".programs.git.enable
   ```
 
   There is no separate rhizome eval. The mount evaluates exactly once, on
@@ -38,7 +38,7 @@
   ```nix
   mounts.custom {
     class = "editor";
-    plugins = { inherit dotfiles; };
+    plugins = { inherit myPlugin; };
     configure.rhizome.dropped = [ "nixos" "darwin" "homeManager" ];
   }
   ```
