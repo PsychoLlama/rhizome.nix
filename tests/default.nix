@@ -1,9 +1,21 @@
 { lib }:
 
-# The rhizome test suite, exposed as the flake's `libTests` output. This is
-# data, not a result: an attrset of `{ expr, expected }` cases, which is
-# the shape both `nix-unit` and `lib.runTests` take. Running it is
-# `tests/check.nix`'s job.
+# The rhizome test suite, exposed as the flake's `libTests` output. This
+# is data, not a result: an attrset of nix-unit cases, either
+# `{ expr, expected }` for a value or `{ expr, expectedError }` for a
+# rejection. Running it is `tests/check.nix`'s job.
+#
+# Rejections name the error they expect rather than asserting that
+# something — anything — went wrong. nix-unit forces `expr` itself and
+# matches the thrown error against `expectedError.type` and a regex in
+# `expectedError.msg`, so a test that starts failing for an unrelated
+# reason says so instead of staying green:
+#
+#   https://nix-community.github.io/nix-unit/examples/errors.html
+#
+# The patterns quote the distinctive clause of each message. Long enough
+# to pin the failure to one `throw`, short enough that rewording the
+# surrounding prose does not break the suite.
 #
 # To run it by hand, from the dev shell:
 #
@@ -204,8 +216,6 @@ let
       ]
       ++ fragments;
     };
-
-  fails = expr: !(lib.tryEval (lib.deepSeq expr expr)).success;
 in
 
 {
@@ -246,8 +256,11 @@ in
   };
 
   testDuplicateMountPointsRejected = {
-    expr = fails (plugin { src = ./fixtures/dup/modules; } { }).__plugin.modules;
-    expected = true;
+    expr = (plugin { src = ./fixtures/dup/modules; } { }).__plugin.modules;
+    expectedError = {
+      type = "ThrownError";
+      msg = "multiple files mount at `foo`";
+    };
   };
 
   # ── Inputs ────────────────────────────────────────────────────────────
@@ -280,8 +293,14 @@ in
   # A required input is a `throw` default: instantiating without it is
   # fine, reading it is not.
   testRequiredInputThrowsOnUse = {
-    expr = fails (sideDef { }).__plugin.inputs.main;
-    expected = true;
+    expr = (sideDef { }).__plugin.inputs.main;
+
+    # The message is the plugin author's, verbatim — rhizome supplies no
+    # wording of its own for a missing input.
+    expectedError = {
+      type = "ThrownError";
+      msg = "side: input `main` is required\\.";
+    };
   };
 
   # ...and a lone mount never forces one, so the dedupe check stays out
@@ -293,24 +312,28 @@ in
 
   testUnknownInputRejected = {
     expr =
-      fails
-        (sideDef {
-          inherit main;
-          bogus = 1;
-        }).__plugin;
-    expected = true;
+      (sideDef {
+        inherit main;
+        bogus = 1;
+      }).__plugin;
+    expectedError = {
+      type = "ThrownError";
+      msg = "unexpected input\\(s\\): bogus";
+    };
   };
 
   # Two instantiations share one mount point, so mounting both would let
   # one set of inputs silently win.
   testConflictingInstancesRejected = {
     expr =
-      fails
-        (evalHost {
-          inherit main side;
-          other = sideLabelled;
-        } [ ]).config.rhizome.fragments;
-    expected = true;
+      (evalHost {
+        inherit main side;
+        other = sideLabelled;
+      } [ ]).config.rhizome.fragments;
+    expectedError = {
+      type = "ThrownError";
+      msg = "mounted more than once with different inputs";
+    };
   };
 
   # The same instance under two bindings is not a conflict — it mounts
@@ -377,9 +400,14 @@ in
 
   testPluginNodeValidatesOptions = {
     expr =
-      fails
-        (evalHost { inherit main; } [ { config."${main}".themeName = 42; } ]).config."${main}".theme.name;
-    expected = true;
+      (evalHost { inherit main; } [ { config."${main}".themeName = 42; } ]).config."${main}".theme.name;
+
+    # The host module system does the checking, so the namespaced path is
+    # what it reports — proof the option really is declared there.
+    expectedError = {
+      type = "ThrownError";
+      msg = "themeName' is not of type `string'";
+    };
   };
 
   # `configure`'s options share the plugin's namespace with its modules,
@@ -433,12 +461,14 @@ in
     # The `_class` tag makes importing a fragment into the wrong platform
     # fail loudly.
     expr =
-      fails
-        (lib.evalModules {
-          class = "nixos";
-          modules = enabled.config.rhizome.fragments.widget;
-        }).config;
-    expected = true;
+      (lib.evalModules {
+        class = "nixos";
+        modules = enabled.config.rhizome.fragments.widget;
+      }).config;
+    expectedError = {
+      type = "ThrownError";
+      msg = "\\(class: \"widget\"\\) cannot be imported into a module evaluation that expects class \"nixos\"";
+    };
   };
 
   # ── Router bookkeeping ───────────────────────────────────────────────
@@ -476,20 +506,26 @@ in
   # it at all, so it fails instead.
   testUnknownRoutedTagRejected = {
     expr =
-      fails
-        (evalHost { inherit main; } [
-          { config.rhizome.routed = [ "widgit" ]; }
-        ]).config.rhizome.unrouted;
-    expected = true;
+      (evalHost { inherit main; } [
+        { config.rhizome.routed = [ "widgit" ]; }
+      ]).config.rhizome.unrouted;
+
+    # The typo is echoed back: the point of the check is to name it.
+    expectedError = {
+      type = "ThrownError";
+      msg = "names unknown class tag\\(s\\): widgit";
+    };
   };
 
   testUnknownDroppedTagRejected = {
     expr =
-      fails
-        (evalHost { inherit main; } [
-          { config.rhizome.dropped = [ "widgit" ]; }
-        ]).config.rhizome.unrouted;
-    expected = true;
+      (evalHost { inherit main; } [
+        { config.rhizome.dropped = [ "widgit" ]; }
+      ]).config.rhizome.unrouted;
+    expectedError = {
+      type = "ThrownError";
+      msg = "names unknown class tag\\(s\\): widgit";
+    };
   };
 
   # Where the host has an assertions mechanism, the mount uses it, so an
@@ -538,26 +574,36 @@ in
   # inside the namespace, where nothing declares it.
   testHostWritesRejected = {
     expr =
-      fails
-        (evalHost { bad = plugin { src = ./fixtures/bad-write/modules; } { }; } [ ])
-        .config.rhizome.fragments;
-    expected = true;
+      (evalHost { bad = plugin { src = ./fixtures/bad-write/modules; } { }; } [ ])
+      .config.rhizome.fragments;
+
+    # `hostSetting` is declared on the host and written by the module, so
+    # the give-away is *where* it went missing: under the plugin's mount
+    # point, not at the root.
+    expectedError = {
+      type = "ThrownError";
+      msg = "bad-write/modules\"\\.hostSetting' does not exist";
+    };
   };
 
   testUnknownArgsRejected = {
     expr =
-      fails
-        (evalHost { bad = plugin { src = ./fixtures/bad-args/modules; } { }; } [ ])
-        .config.rhizome.fragments;
-    expected = true;
+      (evalHost { bad = plugin { src = ./fixtures/bad-args/modules; } { }; } [ ])
+      .config.rhizome.fragments;
+    expectedError = {
+      type = "ThrownError";
+      msg = "requested unavailable argument\\(s\\): osConfig";
+    };
   };
 
   testUnknownClassBlockRejected = {
     expr =
-      fails
-        (evalHost { bad = plugin { src = ./fixtures/bad-class/modules; } { }; } [ ])
-        .config.rhizome.fragments;
-    expected = true;
+      (evalHost { bad = plugin { src = ./fixtures/bad-class/modules; } { }; } [ ])
+      .config.rhizome.fragments;
+    expectedError = {
+      type = "ThrownError";
+      msg = "targets unknown module block `macos`";
+    };
   };
 
   # ── Cross-plugin ──────────────────────────────────────────────────────
@@ -583,22 +629,32 @@ in
   # rather than surfacing as a missing option.
   testUnmountedPluginWriteRejected = {
     expr =
-      fails
-        (evalHost { side = sideDef { main = "/nowhere"; }; } [
-          { config."${side}".probe.enable = true; }
-        ]).config.rhizome.fragments;
-    expected = true;
+      (evalHost { side = sideDef { main = "/nowhere"; }; } [
+        { config."${side}".probe.enable = true; }
+      ]).config.rhizome.fragments;
+
+    # The unmounted target is named, and so is the binding that could
+    # register it.
+    expectedError = {
+      type = "ThrownError";
+      msg = "writes the plugin at `/nowhere`, which is not mounted\\. Register it alongside 'side'";
+    };
   };
 
   # Plugins share the host's fixpoint, so a class block could reach one.
   # Keeping that to `plugins` leaves `modules.<class>` meaning the host.
   testPluginWriteViaClassBlockRejected = {
     expr =
-      fails
-        (evalHost { inherit main stray; } [
-          { config."${stray}".stray.enable = true; }
-        ]).config.rhizome.fragments;
-    expected = true;
+      (evalHost { inherit main stray; } [
+        { config."${stray}".stray.enable = true; }
+      ]).config.rhizome.fragments;
+
+    # Rejected for reaching a plugin, not for the write being invalid —
+    # it would have worked.
+    expectedError = {
+      type = "ThrownError";
+      msg = "Other plugins go through `plugins`, not a class block";
+    };
   };
 
   # Every write is read by name, so a key nobody reads merges into
@@ -606,7 +662,10 @@ in
   # module is applied rather than where its writes are read, so leaving
   # it disabled is no excuse — note nothing is enabled here.
   testUnknownModuleKeyRejected = {
-    expr = fails (evalHost { inherit malformed; } [ ]).config;
-    expected = true;
+    expr = (evalHost { inherit malformed; } [ ]).config;
+    expectedError = {
+      type = "ThrownError";
+      msg = "unrecognised top-level key\\(s\\): peers";
+    };
   };
 }
