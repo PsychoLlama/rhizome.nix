@@ -7,25 +7,30 @@
 
 # The rhizome test suite as a buildable check, wired up in `flake.nix`
 # as `checks.<system>.tests`. The suite itself is pure evaluation — the
-# `tests` flake output is only data — so this exists to give it an
+# `libTests` flake output is only data — so this exists to give it an
 # entrypoint that `nix build` and `nix flake check` understand.
 #
 # nix-unit does the running and the reporting. Iterating by hand skips
 # the derivation and reads the working tree instead:
 #
-#   nix-unit --flake .#tests
+#   nix-unit --flake .#libTests
 
 let
-  # Evaluating `.#tests` means evaluating the flake, which means
+  # Evaluating `.#libTests` means evaluating the flake, which means
   # resolving its inputs — and the build sandbox has no network. Every
   # input is redirected to the store path it already locked to, which
-  # `runCommandLocal` then sees as a dependency and brings along.
+  # `runCommand` then sees as a dependency and brings along.
+  #
+  # `self` is not one of those: it is the flake under evaluation, named
+  # by `--flake` below, and has no lock entry an override would answer
+  # to. Nix accepts `--override-input self` without complaint, which is
+  # the reason to drop it here rather than let it look load-bearing.
   overrides = lib.mapAttrsToList (name: input: "--override-input ${name} ${input}") (
     lib.removeAttrs inputs [ "self" ]
   );
 in
 
-pkgs.runCommandLocal "rhizome-tests"
+pkgs.runCommand "rhizome-tests"
   {
     nativeBuildInputs = [ pkgs.nix-unit ];
   }
@@ -38,7 +43,7 @@ pkgs.runCommandLocal "rhizome-tests"
       --eval-store "$HOME" \
       --extra-experimental-features flakes \
       ${lib.concatStringsSep " \\\n      " overrides} \
-      --flake ${self}#tests
+      --flake ${self}#libTests
 
     touch $out
   ''

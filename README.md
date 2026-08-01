@@ -97,4 +97,4 @@ The instantiated plugin is its own handle: interpolating it yields the option pa
 
 ## Development
 
-`nix develop` for the toolchain, `treefmt` to format, `nix flake check` to run the test suite. The suite is pure evaluation, exposed as the `tests` flake output; `nix-unit --flake .#tests` runs it directly and reports per test.
+`nix develop` for the toolchain, `treefmt` to format, `nix flake check` to run the test suite. The suite is pure evaluation, exposed as the `libTests` flake output; `nix-unit --flake .#libTests` runs it directly and reports per test.

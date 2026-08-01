@@ -30,9 +30,10 @@
       #   inputs.rhizome.inputs.nixpkgs.follows = "nixpkgs";
       lib = import ./lib { inherit lib; };
 
-      # The test suite as data, for `nix-unit --flake .#tests`. Pure
-      # evaluation like the library, so likewise not per-system.
-      tests = import ./tests { inherit lib; };
+      # The test suite as data, for `nix-unit --flake .#libTests`. Pure
+      # evaluation like the library it covers, so likewise not
+      # per-system.
+      libTests = import ./tests { inherit lib; };
 
       checks = eachSystem (
         system: pkgs: {
