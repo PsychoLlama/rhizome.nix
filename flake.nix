@@ -15,9 +15,8 @@
     inputs@{
       self,
       nixpkgs,
+      nix-darwin,
       systems,
-      # nix-darwin is consumed through `inputs`.
-      ...
     }:
 
     let
@@ -40,7 +39,19 @@
       # The test suite as data, for `nix-unit --flake .#libTests`. Pure
       # evaluation like the library it covers, so likewise not
       # per-system.
-      libTests = import ./tests { inherit lib; };
+      #
+      # `roots` is what the suite cannot build for itself: the real
+      # evaluators the shipped mounts install into. Handed over as the
+      # two functions rather than the whole input set, so what the tests
+      # may reach for is named here.
+      libTests = import ./tests {
+        inherit lib;
+
+        roots = {
+          inherit (nixpkgs.lib) nixosSystem;
+          inherit (nix-darwin.lib) darwinSystem;
+        };
+      };
 
       checks = eachSystem (
         system: pkgs: {

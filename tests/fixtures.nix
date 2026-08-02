@@ -144,6 +144,21 @@ rec {
       ++ modules
     );
 
+  # A plugin for the real roots to carry: its modules write the two OS
+  # classes rather than the synthetic `test` one, so it can be mounted
+  # into an actual nixos or nix-darwin eval.
+  os = plugin { src = ./fixtures/os/modules; } { };
+
+  # The real hosts, one per shipped OS root, with `probe` enabled so
+  # each has both an inline write and a fragment for the other OS.
+  nixosHost = utils.evalNixos { inherit os; } [
+    { config."${os}".probe.enable = true; }
+  ];
+
+  darwinHost = utils.evalDarwin { inherit os; } [
+    { config."${os}".probe.enable = true; }
+  ];
+
   # A root that rides in on `configure` instead of sitting beside the
   # mount, the way the shipped roots attach their routers. Built here
   # rather than through `utils.evalHost`, since the point is that the

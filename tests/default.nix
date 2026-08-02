@@ -1,4 +1,4 @@
-{ lib }:
+{ lib, roots }:
 
 # The rhizome test suite, exposed as the flake's `libTests` output. This
 # is data, not a result: a tree of nix-unit cases, grouped here and
@@ -17,7 +17,7 @@ let
   # `fixtures`.
   rhizome = import ../lib { inherit lib; };
 
-  utils = import ./utils.nix { inherit lib rhizome; };
+  utils = import ./utils.nix { inherit lib rhizome roots; };
   fixtures = import ./fixtures.nix { inherit lib rhizome utils; };
 
   suite = path: import path { inherit lib utils fixtures; };
@@ -33,4 +33,6 @@ in
   mountConfigure = suite ./suites/mount-configure.nix;
   fencing = suite ./suites/fencing.nix;
   crossPlugin = suite ./suites/cross-plugin.nix;
+  nixosRoot = suite ./suites/nixos-root.nix;
+  darwinRoot = suite ./suites/darwin-root.nix;
 }
