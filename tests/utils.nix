@@ -81,6 +81,55 @@
       ++ modules;
     };
 
+  # A real standalone home-manager host, mounted through the shipped
+  # root. `username`, `homeDirectory` and `stateVersion` are what an
+  # eval refuses to proceed without; the platform is pinned at the call
+  # because `homeManagerConfiguration` takes `pkgs` rather than deriving
+  # one from a setting inside the eval.
+  evalHomeManager =
+    plugins: modules:
+    roots.homeManagerConfiguration {
+      pkgs = roots.pkgsFor "x86_64-linux";
+
+      modules = [
+        (rhizome.mounts.home-manager plugins)
+        {
+          home.username = "tester";
+          home.homeDirectory = "/home/tester";
+          home.stateVersion = "26.05";
+        }
+      ]
+      ++ modules;
+    };
+
+  # The layer an OS host carries: home-manager's own module for that
+  # host, plus the one user the shipped routers' `sharedModules` reach.
+  # Passed to `evalNixos`/`evalDarwin` as an extra module by the cases
+  # that care what the router did.
+  #
+  # The system account is here because home-manager's OS module asserts
+  # against it — a managed user with no account behind it is a failure
+  # the suite would otherwise have to read past.
+  hostedHomeManager = class: {
+    imports = [ roots.homeManagerModules.${class} ];
+
+    home-manager.users.tester.home.stateVersion = "26.05";
+
+    users.users.tester =
+      {
+        nixos = {
+          isNormalUser = true;
+          home = "/home/tester";
+        };
+
+        darwin = {
+          name = "tester";
+          home = "/Users/tester";
+        };
+      }
+      .${class};
+  };
+
   # The assertions a host is failing, narrowed to the ones rhizome
   # raised. A real nixos config objects to plenty on its own — no root
   # filesystem, no bootloader — and none of that is what a suite reading

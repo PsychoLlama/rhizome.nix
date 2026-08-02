@@ -46,6 +46,26 @@
     };
   };
 
+  # The other half of the routing policy, which appears only once
+  # home-manager's own module is there to route into: fragments ride
+  # `sharedModules` down, and the layer below is marked as already
+  # managed from up here.
+  testHomeManagerFragmentsRouted = {
+    expr = {
+      inherit (fixtures.nixosWithHome.config.rhizome) routed unrouted;
+      carried = fixtures.nixosWithHome.config.home-manager.users.tester.programs.git.enable;
+      hosted = fixtures.nixosWithHome.config.home-manager.users.tester.rhizome.hosted;
+      failures = utils.rhizomeFailures fixtures.nixosWithHome;
+    };
+    expected = {
+      routed = [ "homeManager" ];
+      unrouted = [ ];
+      carried = true;
+      hosted = true;
+      failures = [ ];
+    };
+  };
+
   # No home-manager module means no router for its class, so a module
   # writing one has nowhere to land. Real nixos has the assertions
   # mechanism `evalHost` only pretends to, so the mount's complaint is

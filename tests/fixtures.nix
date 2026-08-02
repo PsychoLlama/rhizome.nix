@@ -159,6 +159,39 @@ rec {
     { config."${os}".probe.enable = true; }
   ];
 
+  # The real standalone home-manager host. `roaming` is on as well as
+  # `probe`, since this is the one root where the home-manager block is
+  # the inline write rather than the fragment.
+  homeManagerHost = utils.evalHomeManager { inherit os; } [
+    {
+      config."${os}" = {
+        probe.enable = true;
+        roaming.enable = true;
+      };
+    }
+  ];
+
+  # The same two hosts with the layer below them present, which is what
+  # turns on the `homeManager` router each OS root ships. `roaming` is
+  # what gives it something to carry.
+  nixosWithHome = utils.evalNixos { inherit os; } [
+    (utils.hostedHomeManager "nixos")
+    { config."${os}".roaming.enable = true; }
+  ];
+
+  darwinWithHome = utils.evalDarwin { inherit os; } [
+    (utils.hostedHomeManager "darwin")
+    { config."${os}".roaming.enable = true; }
+  ];
+
+  # The standalone mount installed *underneath* an OS host that already
+  # manages this configuration: the modules the nixos root routed down,
+  # carried into a second rhizome layer. Every read of this throws —
+  # home-manager checks its assertions before handing back any config.
+  doubleMounted = utils.evalHomeManager {
+    inherit os;
+  } nixosWithHome.config.home-manager.sharedModules;
+
   # A root that rides in on `configure` instead of sitting beside the
   # mount, the way the shipped roots attach their routers. Built here
   # rather than through `utils.evalHost`, since the point is that the

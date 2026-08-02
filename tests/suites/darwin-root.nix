@@ -42,6 +42,24 @@
     };
   };
 
+  # The router, mirrored: nix-darwin carries the same layer beneath it,
+  # through the same shared definition.
+  testHomeManagerFragmentsRouted = {
+    expr = {
+      inherit (fixtures.darwinWithHome.config.rhizome) routed unrouted;
+      carried = fixtures.darwinWithHome.config.home-manager.users.tester.programs.git.enable;
+      hosted = fixtures.darwinWithHome.config.home-manager.users.tester.rhizome.hosted;
+      failures = utils.rhizomeFailures fixtures.darwinWithHome;
+    };
+    expected = {
+      routed = [ "homeManager" ];
+      unrouted = [ ];
+      carried = true;
+      hosted = true;
+      failures = [ ];
+    };
+  };
+
   testUnclaimedClassFailsHostAssertions =
     let
       host = utils.evalDarwin { inherit (fixtures) os; } [

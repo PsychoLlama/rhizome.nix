@@ -35,4 +35,5 @@ in
   crossPlugin = suite ./suites/cross-plugin.nix;
   nixosRoot = suite ./suites/nixos-root.nix;
   darwinRoot = suite ./suites/darwin-root.nix;
+  homeManagerRoot = suite ./suites/home-manager-root.nix;
 }
