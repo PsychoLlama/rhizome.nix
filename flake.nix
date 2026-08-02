@@ -9,6 +9,11 @@
       url = "github:nix-darwin/nix-darwin/nix-darwin-26.05";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    home-manager = {
+      url = "github:nix-community/home-manager/release-26.05";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -16,6 +21,7 @@
       self,
       nixpkgs,
       nix-darwin,
+      home-manager,
       systems,
     }:
 
@@ -42,14 +48,29 @@
       #
       # `roots` is what the suite cannot build for itself: the real
       # evaluators the shipped mounts install into. Handed over as the
-      # two functions rather than the whole input set, so what the tests
-      # may reach for is named here.
+      # named functions rather than the whole input set, so what the
+      # tests may reach for is named here.
       libTests = import ./tests {
         inherit lib;
 
         roots = {
           inherit (nixpkgs.lib) nixosSystem;
           inherit (nix-darwin.lib) darwinSystem;
+          inherit (home-manager.lib) homeManagerConfiguration;
+
+          # The layer an OS host carries beneath it. Both roots route
+          # `home-manager.sharedModules`, which only exists once this is
+          # imported — so a suite covering that branch needs it.
+          homeManagerModules = {
+            nixos = home-manager.nixosModules.home-manager;
+            darwin = home-manager.darwinModules.home-manager;
+          };
+
+          # Unlike the two OS evaluators, `homeManagerConfiguration`
+          # takes its `pkgs` as an argument instead of pinning a
+          # platform from inside the eval, so the suite needs a way to
+          # build one for the system it names.
+          pkgsFor = system: import nixpkgs { inherit system; };
         };
       };
 
