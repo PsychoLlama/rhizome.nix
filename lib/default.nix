@@ -9,6 +9,7 @@
 
 let
   mount = import ./mounts/custom.nix { inherit lib; };
+  osHost = import ./mounts/os-host.nix { inherit lib mount; };
 in
 
 {
@@ -22,7 +23,8 @@ in
   # class as an argument and leaves routing to the caller.
   mounts = {
     custom = mount;
-    nixos = import ./mounts/nixos.nix { inherit lib mount; };
+    nixos = import ./mounts/nixos.nix { inherit osHost; };
+    darwin = import ./mounts/darwin.nix { inherit osHost; };
     home-manager = import ./mounts/home-manager.nix { inherit lib mount; };
   };
 }

@@ -93,7 +93,7 @@ nixpkgs.lib.nixosSystem {
 }
 ```
 
-The instantiated plugin is its own handle: interpolating it yields the option path it mounted at. `mounts.nixos` and `mounts.home-manager` ship with the routing a root of that stack needs; `mounts.custom` is the same machinery for a class Rhizome has no root for, taking the class as an argument and leaving routing to you.
+The instantiated plugin is its own handle: interpolating it yields the option path it mounted at. `mounts.nixos`, `mounts.darwin`, and `mounts.home-manager` ship with the routing a root of that stack needs; `mounts.custom` is the same machinery for a class Rhizome has no root for, taking the class as an argument and leaving routing to you.
 
 ## Development
 
