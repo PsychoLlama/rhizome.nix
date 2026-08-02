@@ -17,6 +17,16 @@
 src:
 
 let
+  /**
+    Descend one directory, carrying the mount point it sits at. A
+    subdirectory extends the subpath; a module file terminates it.
+
+    # Type
+
+    ```
+    walk :: [String] -> Path -> [ { subpath : [String], file : Path } ]
+    ```
+  */
   walk =
     subpath: directory:
     lib.pipe (lib.readDir directory) [
@@ -47,8 +57,28 @@ let
       lib.concatLists
     ];
 
+  /**
+    Every module under `src`, in no particular order.
+
+    # Type
+
+    ```
+    modules :: [ { subpath : [String], file : Path } ]
+    ```
+  */
   modules = walk [ ] src;
 
+  /**
+    Mount points claimed by more than one file, as dotted paths. Both
+    spellings of a mount point are legal, so the collision only shows up
+    once the whole tree is in hand.
+
+    # Type
+
+    ```
+    duplicates :: [ String ]
+    ```
+  */
   duplicates = lib.pipe modules [
     (lib.groupBy (mod: lib.concatStringsSep "." mod.subpath))
     (lib.filterAttrs (_: entries: lib.length entries > 1))

@@ -4,9 +4,10 @@
   fixtures,
 }:
 
-# Enablement gates effects, not visibility: every mounted module is
-# loaded and readable, and `enable` decides only whether its writes land.
-
+/**
+  Enablement gates effects, not visibility: every mounted module is
+  loaded and readable, and `enable` decides only whether its writes land.
+*/
 {
   testModulesDisabledByDefault = {
     expr = fixtures.base.config."${fixtures.main}".programs.alpha.enable;

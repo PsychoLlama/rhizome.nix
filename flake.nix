@@ -34,22 +34,28 @@
     in
 
     {
-      # The library, built against this flake's nixpkgs. Rhizome is pure
-      # evaluation — no packages, nothing system-dependent — so there is
-      # one of these, not one per system. Consumers wanting it built
-      # against their own `lib` point this flake's nixpkgs at theirs:
-      #
-      #   inputs.rhizome.inputs.nixpkgs.follows = "nixpkgs";
+      /**
+        The library, built against this flake's nixpkgs. Rhizome is pure
+        evaluation — no packages, nothing system-dependent — so there is
+        one of these, not one per system. Consumers wanting it built
+        against their own `lib` point this flake's nixpkgs at theirs:
+
+        ```nix
+        inputs.rhizome.inputs.nixpkgs.follows = "nixpkgs";
+        ```
+      */
       lib = import ./lib { inherit lib; };
 
-      # The test suite as data, for `nix-unit --flake .#libTests`. Pure
-      # evaluation like the library it covers, so likewise not
-      # per-system.
-      #
-      # `roots` is what the suite cannot build for itself: the real
-      # evaluators the shipped mounts install into. Handed over as the
-      # named functions rather than the whole input set, so what the
-      # tests may reach for is named here.
+      /**
+        The test suite as data, for `nix-unit --flake .#libTests`. Pure
+        evaluation like the library it covers, so likewise not
+        per-system.
+
+        `roots` is what the suite cannot build for itself: the real
+        evaluators the shipped mounts install into. Handed over as the
+        named functions rather than the whole input set, so what the
+        tests may reach for is named here.
+      */
       libTests = import ./tests {
         inherit lib;
 

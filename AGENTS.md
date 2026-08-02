@@ -17,4 +17,6 @@
 
 - Always prefer `lib` over `builtins`.
 - Use `lib.pipe` for complex expressions.
-- Use `/** ... */` docstrings.
+- Use `/** ... */` docstrings, placed against the value they document — the file's export, a `let` helper, an attribute.
+- Inline rationale stays a `#` comment. A docstring names what something is, not why a line reads the way it does.
+- Give a docstring a `# Type` block when the value is a function.

@@ -4,10 +4,11 @@
   fixtures,
 }:
 
-# Class fragments: what a module's `modules.<class>` block becomes.
-# Blocks naming the host's own class are inlined into it; the rest are
-# collected for a router downstream to place.
-
+/**
+  Class fragments: what a module's `modules.<class>` block becomes.
+  Blocks naming the host's own class are inlined into it; the rest are
+  collected for a router downstream to place.
+*/
 {
   testHostClassFragmentInlines = {
     expr = fixtures.enabled.config.hostSetting;
@@ -19,7 +20,9 @@
     expected = "";
   };
 
-  # Two plugins write the same host from their own class blocks.
+  /**
+    Two plugins write the same host from their own class blocks.
+  */
   testSecondPluginFragmentInlines = {
     expr = fixtures.paired.config.probeSetting;
     expected = "side";

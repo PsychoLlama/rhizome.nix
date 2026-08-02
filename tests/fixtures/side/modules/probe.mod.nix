@@ -1,6 +1,8 @@
-# A second plugin's module. It exists to prove two namespaces mount side
-# by side without colliding, and that `inputs` lets a discovered module
-# name a plugin it has no lexical scope over.
+/**
+  A second plugin's module. It exists to prove two namespaces mount side
+  by side without colliding, and that `inputs` lets a discovered module
+  name a plugin it has no lexical scope over.
+*/
 {
   cfg,
   inputs,

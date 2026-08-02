@@ -22,6 +22,17 @@
 modules:
 
 let
+  /**
+    Graft one module's subpath onto the tree, creating the interior
+    nodes it passes through. The leaf is empty: the tree is shape, and a
+    module carries nothing addressable of its own.
+
+    # Type
+
+    ```
+    insert :: AttrSet -> [String] -> AttrSet
+    ```
+  */
   insert =
     tree: subpath:
     if subpath == [ ] then

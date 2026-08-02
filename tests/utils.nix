@@ -4,25 +4,34 @@
   roots,
 }:
 
-# Machinery the suites evaluate things with, as opposed to the things
-# they evaluate — nothing here knows about any particular fixture.
-#
-# `evalHost` and `buildWidget` stand in for a real root: the first for
-# the stacks rhizome ships a mount for, the second for a downstream eval
-# that consumes collected fragments. Neither is under test, but a suite
-# that wants a host of its own shape should reach for one rather than
-# call `lib.evalModules` by hand.
-#
-# `evalNixos`, `evalDarwin` and `evalHomeManager` stand in for nothing —
-# they are the real evaluators, mounted through the roots rhizome ships
-# for them. All three pin their platform, so a case can name the system
-# it expects and get the same answer on any builder.
+/**
+  Machinery the suites evaluate things with, as opposed to the things
+  they evaluate — nothing here knows about any particular fixture.
 
+  `evalHost` and `buildWidget` stand in for a real root: the first for
+  the stacks rhizome ships a mount for, the second for a downstream eval
+  that consumes collected fragments. Neither is under test, but a suite
+  that wants a host of its own shape should reach for one rather than
+  call `lib.evalModules` by hand.
+
+  `evalNixos`, `evalDarwin` and `evalHomeManager` stand in for nothing —
+  they are the real evaluators, mounted through the roots rhizome ships
+  for them. All three pin their platform, so a case can name the system
+  it expects and get the same answer on any builder.
+*/
 {
-  # A minimal host standing in for nixos/home-manager: declares two
-  # native options so tests can watch host-class fragments land (and
-  # prove `global` never exposes them). It deliberately does not declare
-  # `assertions`, so most suites read `rhizome.unrouted` directly.
+  /**
+    A minimal host standing in for nixos/home-manager: declares two
+    native options so tests can watch host-class fragments land (and
+    prove `global` never exposes them). It deliberately does not declare
+    `assertions`, so most suites read `rhizome.unrouted` directly.
+
+    # Type
+
+    ```
+    evalHost :: AttrSet Plugin -> [ Module ] -> AttrSet
+    ```
+  */
   evalHost =
     plugins: modules:
     lib.evalModules {
@@ -49,9 +58,17 @@
       ++ modules;
     };
 
-  # A real nixos host, mounted through the shipped root. `stateVersion`
-  # and `hostPlatform` are the two settings an eval refuses to proceed
-  # without; nothing here builds, so that is the whole baseline.
+  /**
+    A real nixos host, mounted through the shipped root. `stateVersion`
+    and `hostPlatform` are the two settings an eval refuses to proceed
+    without; nothing here builds, so that is the whole baseline.
+
+    # Type
+
+    ```
+    evalNixos :: AttrSet Plugin -> [ Module ] -> AttrSet
+    ```
+  */
   evalNixos =
     plugins: modules:
     roots.nixosSystem {
@@ -65,8 +82,16 @@
       ++ modules;
     };
 
-  # The same for nix-darwin. Evaluating a darwin host on a linux builder
-  # is fine — pure evaluation, and no derivation is ever forced.
+  /**
+    The same for nix-darwin. Evaluating a darwin host on a linux builder
+    is fine — pure evaluation, and no derivation is ever forced.
+
+    # Type
+
+    ```
+    evalDarwin :: AttrSet Plugin -> [ Module ] -> AttrSet
+    ```
+  */
   evalDarwin =
     plugins: modules:
     roots.darwinSystem {
@@ -81,11 +106,19 @@
       ++ modules;
     };
 
-  # A real standalone home-manager host, mounted through the shipped
-  # root. `username`, `homeDirectory` and `stateVersion` are what an
-  # eval refuses to proceed without; the platform is pinned at the call
-  # because `homeManagerConfiguration` takes `pkgs` rather than deriving
-  # one from a setting inside the eval.
+  /**
+    A real standalone home-manager host, mounted through the shipped
+    root. `username`, `homeDirectory` and `stateVersion` are what an
+    eval refuses to proceed without; the platform is pinned at the call
+    because `homeManagerConfiguration` takes `pkgs` rather than deriving
+    one from a setting inside the eval.
+
+    # Type
+
+    ```
+    evalHomeManager :: AttrSet Plugin -> [ Module ] -> AttrSet
+    ```
+  */
   evalHomeManager =
     plugins: modules:
     roots.homeManagerConfiguration {
@@ -102,14 +135,22 @@
       ++ modules;
     };
 
-  # The layer an OS host carries: home-manager's own module for that
-  # host, plus the one user the shipped routers' `sharedModules` reach.
-  # Passed to `evalNixos`/`evalDarwin` as an extra module by the cases
-  # that care what the router did.
-  #
-  # The system account is here because home-manager's OS module asserts
-  # against it — a managed user with no account behind it is a failure
-  # the suite would otherwise have to read past.
+  /**
+    The layer an OS host carries: home-manager's own module for that
+    host, plus the one user the shipped routers' `sharedModules` reach.
+    Passed to `evalNixos`/`evalDarwin` as an extra module by the cases
+    that care what the router did.
+
+    The system account is here because home-manager's OS module asserts
+    against it — a managed user with no account behind it is a failure
+    the suite would otherwise have to read past.
+
+    # Type
+
+    ```
+    hostedHomeManager :: String -> Module
+    ```
+  */
   hostedHomeManager = class: {
     imports = [ roots.homeManagerModules.${class} ];
 
@@ -130,10 +171,18 @@
       .${class};
   };
 
-  # The assertions a host is failing, narrowed to the ones rhizome
-  # raised. A real nixos config objects to plenty on its own — no root
-  # filesystem, no bootloader — and none of that is what a suite reading
-  # this is asking about.
+  /**
+    The assertions a host is failing, narrowed to the ones rhizome
+    raised. A real nixos config objects to plenty on its own — no root
+    filesystem, no bootloader — and none of that is what a suite reading
+    this is asking about.
+
+    # Type
+
+    ```
+    rhizomeFailures :: AttrSet -> [ String ]
+    ```
+  */
   rhizomeFailures =
     host:
     lib.pipe host.config.assertions [
@@ -142,8 +191,16 @@
       (lib.filter (lib.hasPrefix "rhizome:"))
     ];
 
-  # A downstream eval consuming collected fragments, the way home-manager
-  # consumes `sharedModules`.
+  /**
+    A downstream eval consuming collected fragments, the way home-manager
+    consumes `sharedModules`.
+
+    # Type
+
+    ```
+    buildWidget :: [ Module ] -> AttrSet
+    ```
+  */
   buildWidget =
     fragments:
     lib.evalModules {

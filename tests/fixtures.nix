@@ -4,23 +4,30 @@
   utils,
 }:
 
-# The things the suites evaluate: the plugins under `tests/fixtures`,
-# instantiated, and the hosts they are mounted into.
-#
-# Nothing here asserts anything. A binding earns its place by being
-# shared between suites, or by being long enough that inlining it would
-# bury the case using it — a one-off `utils.evalHost` call belongs in the
-# suite.
-
 let
   inherit (rhizome) plugin;
 in
 
+/**
+  The things the suites evaluate: the plugins under `tests/fixtures`,
+  instantiated, and the hosts they are mounted into.
+
+  Nothing here asserts anything. A binding earns its place by being
+  shared between suites, or by being long enough that inlining it would
+  bury the case using it — a one-off `utils.evalHost` call belongs in the
+  suite.
+*/
 rec {
-  # Named so `testPluginIsAddressable` can state the handle it expects
-  # without repeating the path literal.
+  /**
+    Named so `testPluginIsAddressable` can state the handle it expects
+    without repeating the path literal.
+  */
   mainSrc = ./fixtures/main/modules;
 
+  /**
+    The plugin most suites reach for: a nested namespace, a `configure`
+    of its own, and modules covering every write block.
+  */
   main = plugin {
     src = mainSrc;
 
@@ -43,11 +50,16 @@ rec {
       };
   } { };
 
-  # A second plugin, to prove `global` is keyed by plugin and that two
-  # namespaces coexist without collision.
-  #
-  # Cross-plugin wiring rides `inputs`: the assembler hands `side` a
-  # reference to its peer, which every module in `side` can then name.
+  /**
+    A second plugin, to prove `global` is keyed by plugin and that two
+    namespaces coexist without collision.
+
+    Cross-plugin wiring rides `inputs`: the assembler hands `side` a
+    reference to its peer, which every module in `side` can then name.
+
+    Left as a definition, since several cases instantiate it themselves
+    to vary the inputs.
+  */
   sideDef = plugin {
     src = ./fixtures/side/modules;
 
@@ -76,15 +88,25 @@ rec {
       };
   };
 
+  /**
+    `sideDef` with its required input supplied and its optional one left
+    to default.
+  */
   side = sideDef { inherit main; };
 
+  /**
+    The same definition instantiated differently, which is what makes it
+    a conflict to mount alongside `side`.
+  */
   sideLabelled = sideDef {
     inherit main;
     label = "loud";
   };
 
-  # `main` redefined with a required input none of its modules read, to
-  # prove declaring one taxes nothing that ignores it.
+  /**
+    `main` redefined with a required input none of its modules read, to
+    prove declaring one taxes nothing that ignores it.
+  */
   unreadInputDef = plugin {
     src = mainSrc;
 
@@ -96,7 +118,9 @@ rec {
     inputs.needed = throw "unreadInputDef: forced an input nobody reads.";
   };
 
-  # Reaches `main` through a class block, which `plugins` now owns.
+  /**
+    Reaches `main` through a class block, which `plugins` now owns.
+  */
   stray =
     plugin
       {
@@ -108,26 +132,47 @@ rec {
         inherit main;
       };
 
-  # Plugins that exist to be rejected. Instantiating one is fine; every
-  # throw they carry waits for the thing it objects to to be forced.
+  /**
+    Plugins that exist to be rejected. Instantiating one is fine; every
+    throw they carry waits for the thing it objects to to be forced.
+  */
   dup = plugin { src = ./fixtures/dup/modules; } { };
   badWrite = plugin { src = ./fixtures/bad-write/modules; } { };
   badArgs = plugin { src = ./fixtures/bad-args/modules; } { };
   badClass = plugin { src = ./fixtures/bad-class/modules; } { };
   malformed = plugin { src = ./fixtures/malformed/modules; } { };
 
+  /**
+    `main` mounted with nothing enabled: the baseline every
+    gated-by-enable case reads against.
+  */
   base = utils.evalHost { inherit main; } [ ];
 
+  /**
+    The same host with `programs.alpha` on, which is what puts writes in
+    every block a module has.
+  */
   enabled = utils.evalHost { inherit main; } [
     { config."${main}".programs.alpha.enable = true; }
   ];
 
+  /**
+    Two plugins in one host, with the one that reaches across enabled.
+  */
   paired = utils.evalHost { inherit main side; } [
     { config."${side}".probe.enable = true; }
   ];
 
-  # `main`'s host with an `assertions` mechanism bolted on, the way nixos
-  # and home-manager have one.
+  /**
+    `main`'s host with an `assertions` mechanism bolted on, the way nixos
+    and home-manager have one.
+
+    # Type
+
+    ```
+    asserting :: [ Module ] -> AttrSet
+    ```
+  */
   asserting =
     modules:
     utils.evalHost { inherit main; } (
@@ -144,13 +189,17 @@ rec {
       ++ modules
     );
 
-  # A plugin for the real roots to carry: its modules write the two OS
-  # classes rather than the synthetic `test` one, so it can be mounted
-  # into an actual nixos or nix-darwin eval.
+  /**
+    A plugin for the real roots to carry: its modules write the two OS
+    classes rather than the synthetic `test` one, so it can be mounted
+    into an actual nixos or nix-darwin eval.
+  */
   os = plugin { src = ./fixtures/os/modules; } { };
 
-  # The real hosts, one per shipped OS root, with `probe` enabled so
-  # each has both an inline write and a fragment for the other OS.
+  /**
+    The real hosts, one per shipped OS root, with `probe` enabled so
+    each has both an inline write and a fragment for the other OS.
+  */
   nixosHost = utils.evalNixos { inherit os; } [
     { config."${os}".probe.enable = true; }
   ];
@@ -159,9 +208,11 @@ rec {
     { config."${os}".probe.enable = true; }
   ];
 
-  # The real standalone home-manager host. `roaming` is on as well as
-  # `probe`, since this is the one root where the home-manager block is
-  # the inline write rather than the fragment.
+  /**
+    The real standalone home-manager host. `roaming` is on as well as
+    `probe`, since this is the one root where the home-manager block is
+    the inline write rather than the fragment.
+  */
   homeManagerHost = utils.evalHomeManager { inherit os; } [
     {
       config."${os}" = {
@@ -171,9 +222,11 @@ rec {
     }
   ];
 
-  # The same two hosts with the layer below them present, which is what
-  # turns on the `homeManager` router each OS root ships. `roaming` is
-  # what gives it something to carry.
+  /**
+    The same two hosts with the layer below them present, which is what
+    turns on the `homeManager` router each OS root ships. `roaming` is
+    what gives it something to carry.
+  */
   nixosWithHome = utils.evalNixos { inherit os; } [
     (utils.hostedHomeManager "nixos")
     { config."${os}".roaming.enable = true; }
@@ -184,18 +237,22 @@ rec {
     { config."${os}".roaming.enable = true; }
   ];
 
-  # The standalone mount installed *underneath* an OS host that already
-  # manages this configuration: the modules the nixos root routed down,
-  # carried into a second rhizome layer. Every read of this throws —
-  # home-manager checks its assertions before handing back any config.
+  /**
+    The standalone mount installed *underneath* an OS host that already
+    manages this configuration: the modules the nixos root routed down,
+    carried into a second rhizome layer. Every read of this throws —
+    home-manager checks its assertions before handing back any config.
+  */
   doubleMounted = utils.evalHomeManager {
     inherit os;
   } nixosWithHome.config.home-manager.sharedModules;
 
-  # A root that rides in on `configure` instead of sitting beside the
-  # mount, the way the shipped roots attach their routers. Built here
-  # rather than through `utils.evalHost`, since the point is that the
-  # host has no second module.
+  /**
+    A root that rides in on `configure` instead of sitting beside the
+    mount, the way the shipped roots attach their routers. Built here
+    rather than through `utils.evalHost`, since the point is that the
+    host has no second module.
+  */
   configured = lib.evalModules {
     class = "test";
     modules = [

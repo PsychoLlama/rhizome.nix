@@ -4,11 +4,12 @@
   fixtures,
 }:
 
-# The plugin's own module: the `configure` a plugin definition carries,
-# mounted at the plugin's root and sharing the namespace with everything
-# discovered under it. Not the mount's `configure` — see
-# `mount-configure.nix`.
-
+/**
+  The plugin's own module: the `configure` a plugin definition carries,
+  mounted at the plugin's root and sharing the namespace with everything
+  discovered under it. Not the mount's `configure` — see
+  `mount-configure.nix`.
+*/
 {
   testPluginNodeForwardsConfig = {
     expr =
@@ -32,8 +33,10 @@
     };
   };
 
-  # `configure`'s options share the plugin's namespace with its modules,
-  # so `self` reaches both.
+  /**
+    `configure`'s options share the plugin's namespace with its modules,
+    so `self` reaches both.
+  */
   testPluginConfigureOptionsJoinSelf = {
     expr = fixtures.base.config."${fixtures.main}".programs.alpha.pluginView;
     expected = "plain";

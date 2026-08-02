@@ -42,7 +42,8 @@ description: Use when writing, changing, or debugging rhizome's test suite under
 - Every suite takes `{ lib, utils, fixtures }` and returns a flat attrset of cases.
 - Reach shared values qualified — `fixtures.main`, `utils.evalHost`. That prefix is what separates them from whatever the case builds for itself.
 - Add a case to the suite its subject already lives in. Needing a new suite means the seam is new — give it a file and a `default.nix` entry.
-- Head each suite with a comment naming the seam it covers, not a list of its cases.
+- Head each suite with a docstring naming the seam it covers, not a list of its cases.
+- Docstring a case when its name does not already say why it exists. Notes inside the case body stay `#` comments.
 
 ## Fixtures
 

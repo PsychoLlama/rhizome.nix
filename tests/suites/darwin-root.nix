@@ -4,14 +4,15 @@
   fixtures,
 }:
 
-# The shipped darwin root, in the module system nix-darwin actually
-# ships. The mirror of `nixos-root.nix`, and deliberately kept as one:
-# the two roots are one shape with the OS classes swapped, so a case
-# that holds for one and not the other is the interesting outcome.
-#
-# Evaluated on whatever builder runs the suite. A darwin host evaluates
-# anywhere — nothing here is built.
+/**
+  The shipped darwin root, in the module system nix-darwin actually
+  ships. The mirror of `nixos-root.nix`, and deliberately kept as one:
+  the two roots are one shape with the OS classes swapped, so a case
+  that holds for one and not the other is the interesting outcome.
 
+  Evaluated on whatever builder runs the suite. A darwin host evaluates
+  anywhere — nothing here is built.
+*/
 {
   testHostClassFragmentInlines = {
     expr = fixtures.darwinHost.config.environment.etc."rhizome-probe".text;
@@ -28,8 +29,10 @@
     expected = "aarch64-darwin";
   };
 
-  # The half of the drop policy that distinguishes this root from the
-  # nixos one: same module, same two blocks, opposite survivor.
+  /**
+    The half of the drop policy that distinguishes this root from the
+    nixos one: same module, same two blocks, opposite survivor.
+  */
   testNixosFragmentsDropped = {
     expr = {
       collected = lib.length fixtures.darwinHost.config.rhizome.fragments.nixos;
@@ -42,8 +45,10 @@
     };
   };
 
-  # The router, mirrored: nix-darwin carries the same layer beneath it,
-  # through the same shared definition.
+  /**
+    The router, mirrored: nix-darwin carries the same layer beneath it,
+    through the same shared definition.
+  */
   testHomeManagerFragmentsRouted = {
     expr = {
       inherit (fixtures.darwinWithHome.config.rhizome) routed unrouted;

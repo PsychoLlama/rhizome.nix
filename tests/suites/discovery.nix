@@ -4,9 +4,10 @@
   fixtures,
 }:
 
-# Discovery and the namespace tree: what a directory of `*.mod.nix`
-# files turns into, and what that tree is addressable as.
-
+/**
+  Discovery and the namespace tree: what a directory of `*.mod.nix`
+  files turns into, and what that tree is addressable as.
+*/
 {
   testNamespaceShape = {
     expr = lib.sort lib.lessThan (
@@ -25,17 +26,21 @@
     ];
   };
 
-  # A subdirectory becomes a branch, and holds only what it contains.
+  /**
+    A subdirectory becomes a branch, and holds only what it contains.
+  */
   testNamespaceNests = {
     expr = lib.attrNames fixtures.main.programs;
     expected = [ "alpha" ];
   };
 
-  # The plugin is the only handle: modules are reached by navigating from
-  # it, not by stringifying them. `lib.toString` rather than
-  # interpolation on the right — the handle is `src` as a string, and
-  # interpolating the path would copy the directory to a store path of
-  # its own instead.
+  /**
+    The plugin is the only handle: modules are reached by navigating from
+    it, not by stringifying them. `lib.toString` rather than
+    interpolation on the right — the handle is `src` as a string, and
+    interpolating the path would copy the directory to a store path of
+    its own instead.
+  */
   testPluginIsAddressable = {
     expr = "${fixtures.main}";
     expected = lib.toString fixtures.mainSrc;

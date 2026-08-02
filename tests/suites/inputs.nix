@@ -4,20 +4,25 @@
   fixtures,
 }:
 
-# Inputs: the values an assembler hands a plugin, and the rules about
-# instantiating one more than once.
-
+/**
+  Inputs: the values an assembler hands a plugin, and the rules about
+  instantiating one more than once.
+*/
 {
-  # Definition and instantiation are separate calls; the handle comes
-  # from `src` alone, so it survives instantiation unchanged. That is
-  # what lets two plugins name each other in one `let`.
+  /**
+    Definition and instantiation are separate calls; the handle comes
+    from `src` alone, so it survives instantiation unchanged. That is
+    what lets two plugins name each other in one `let`.
+  */
   testInstanceKeepsHandle = {
     expr = "${fixtures.sideLabelled}";
     expected = "${fixtures.side}";
   };
 
-  # Inputs are handed over untouched, whatever they are: a plugin stays
-  # a plugin, for the module to interpolate.
+  /**
+    Inputs are handed over untouched, whatever they are: a plugin stays
+    a plugin, for the module to interpolate.
+  */
   testPluginInputPassedVerbatim = {
     expr = fixtures.side.__plugin.inputs.main == fixtures.main;
     expected = true;
@@ -33,8 +38,10 @@
     expected = null;
   };
 
-  # A required input is a `throw` default: instantiating without it is
-  # fine, reading it is not.
+  /**
+    A required input is a `throw` default: instantiating without it is
+    fine, reading it is not.
+  */
   testRequiredInputThrowsOnUse = {
     expr = (fixtures.sideDef { }).__plugin.inputs.main;
 
@@ -46,8 +53,10 @@
     };
   };
 
-  # ...and a lone mount never forces one, so the dedupe check stays out
-  # of the way of inputs nothing reads.
+  /**
+    ...and a lone mount never forces one, so the dedupe check stays out
+    of the way of inputs nothing reads.
+  */
   testUnreadRequiredInputStaysLazy = {
     expr = (utils.evalHost { lazy = fixtures.unreadInputDef { }; } [ ]).config.hostSetting;
     expected = "";
@@ -65,8 +74,10 @@
     };
   };
 
-  # Two instantiations share one mount point, so mounting both would let
-  # one set of inputs silently win.
+  /**
+    Two instantiations share one mount point, so mounting both would let
+    one set of inputs silently win.
+  */
   testConflictingInstancesRejected = {
     expr =
       (utils.evalHost {
@@ -79,8 +90,10 @@
     };
   };
 
-  # The same instance under two bindings is not a conflict — it mounts
-  # once, and the check never forces the inputs.
+  /**
+    The same instance under two bindings is not a conflict — it mounts
+    once, and the check never forces the inputs.
+  */
   testSameInstanceMountsOnce = {
     expr =
       (utils.evalHost {

@@ -1,6 +1,8 @@
-# One module carrying configuration for both OS classes, which is the
-# whole point of the layer: `nixos` and `darwin` are in the class table
-# out of the box, so a plugin declares neither.
+/**
+  One module carrying configuration for both OS classes, which is the
+  whole point of the layer: `nixos` and `darwin` are in the class table
+  out of the box, so a plugin declares neither.
+*/
 {
   cfg,
   pkgs,

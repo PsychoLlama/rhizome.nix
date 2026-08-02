@@ -1,3 +1,7 @@
+/**
+  The peer everything else reads. Stays disabled throughout, which is
+  what makes it proof that reads need mounting and not enabling.
+*/
 { cfg, lib, ... }:
 {
   options = {

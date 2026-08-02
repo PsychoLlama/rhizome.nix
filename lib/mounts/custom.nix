@@ -104,6 +104,16 @@ let
   */
   global = lib.genAttrs pluginKeys (key: config.${key});
 
+  /**
+    `module-writes.nix` with everything it needs from this mount and
+    this fixpoint already supplied, leaving one entry to hand it.
+
+    # Type
+
+    ```
+    writesFor :: Entry // { applied : AttrSet } -> AttrSet
+    ```
+  */
   writesFor =
     import ../module-writes.nix { inherit lib; }
       {

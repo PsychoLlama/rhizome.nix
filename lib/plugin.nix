@@ -82,15 +82,56 @@ in
 }:
 
 let
+  /**
+    Everything under `src`, resolved at definition time — the plugin's
+    shape does not depend on who instantiates it.
+
+    # Type
+
+    ```
+    modules :: [ { subpath : [String], file : Path } ]
+    ```
+  */
   modules = discover src;
+
+  /**
+    That same shape as a tree, which is what an instance *is*.
+
+    # Type
+
+    ```
+    namespace :: AttrSet
+    ```
+  */
   namespace = buildNamespace modules;
 
+  /**
+    Modules whose top segment would collide with the `__toString` and
+    `__plugin` keys an instance carries. Reserving the prefix keeps a
+    module from shadowing the handle it is reached through.
+
+    # Type
+
+    ```
+    reserved :: [ { subpath : [String], file : Path } ]
+    ```
+  */
   reserved = lib.filter (mod: lib.hasPrefix "__" (lib.head mod.subpath)) modules;
 in
 
 supplied:
 
 let
+  /**
+    Supplied inputs the plugin never declared. A typo here would
+    otherwise sit in `__plugin.inputs` unread.
+
+    # Type
+
+    ```
+    unknown :: [ String ]
+    ```
+  */
   unknown = lib.attrNames (lib.removeAttrs supplied (lib.attrNames inputs));
 in
 

@@ -1,3 +1,11 @@
+/**
+  The module most cases turn on: it writes all three blocks and reads its
+  own plugin through `self`, so enabling it is what puts something in
+  every place a write can land.
+
+  Its `<name>/mod.nix` spelling is also the nested-directory half of
+  discovery.
+*/
 {
   self,
   cfg,

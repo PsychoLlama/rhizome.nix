@@ -5,25 +5,32 @@
   self,
 }:
 
-# The rhizome test suite as a buildable check, wired up in `flake.nix`
-# as `checks.<system>.tests`. The suite itself is pure evaluation — the
-# `libTests` flake output is only data — so this exists to give it an
-# entrypoint that `nix build` and `nix flake check` understand.
-#
-# nix-unit does the running and the reporting. Iterating by hand skips
-# the derivation and reads the working tree instead:
-#
-#   nix-unit --flake .#libTests
-
 let
-  # Long options taking their argument as a separate word, which is what
-  # `sep = null` means: `[ "--flake" "<ref>" ]`, not `--flake=<ref>`.
+  /**
+    Long options taking their argument as a separate word, which is what
+    `sep = null` means: `[ "--flake" "<ref>" ]`, not `--flake=<ref>`.
+
+    # Type
+
+    ```
+    flag :: String -> AttrSet
+    ```
+  */
   flag = name: {
     option = "--${name}";
     sep = null;
     explicitBool = false;
   };
 
+  /**
+    The nix-unit invocation, as words for the shell to run.
+
+    # Type
+
+    ```
+    args :: [ String ]
+    ```
+  */
   args = lib.cli.toCommandLine flag {
     # nix-unit writes the derivations it evaluates somewhere, and the
     # real store is read-only from inside the sandbox. Left unquoted for
@@ -55,6 +62,19 @@ let
   };
 in
 
+/**
+  The rhizome test suite as a buildable check, wired up in `flake.nix`
+  as `checks.<system>.tests`. The suite itself is pure evaluation — the
+  `libTests` flake output is only data — so this exists to give it an
+  entrypoint that `nix build` and `nix flake check` understand.
+
+  nix-unit does the running and the reporting. Iterating by hand skips
+  the derivation and reads the working tree instead:
+
+  ```sh
+  nix-unit --flake .#libTests
+  ```
+*/
 pkgs.runCommand "rhizome-tests"
   {
     nativeBuildInputs = [ pkgs.nix-unit ];

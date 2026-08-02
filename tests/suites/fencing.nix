@@ -4,11 +4,12 @@
   fixtures,
 }:
 
-# Fencing: the closed edge of a rhizome module. It sees its own plugin
-# and nothing of the host, takes a fixed argument set, and writes through
-# a fixed set of top-level keys. Everything outside that is an error at
-# the mount rather than silence later.
-
+/**
+  Fencing: the closed edge of a rhizome module. It sees its own plugin
+  and nothing of the host, takes a fixed argument set, and writes through
+  a fixed set of top-level keys. Everything outside that is an error at
+  the mount rather than silence later.
+*/
 {
   testGlobalHidesHostOptions = {
     expr = fixtures.base.config."${fixtures.main}".introspect.fenced;
@@ -20,8 +21,10 @@
     expected = "plain";
   };
 
-  # `config` cannot escape its plugin: a host option name simply lands
-  # inside the namespace, where nothing declares it.
+  /**
+    `config` cannot escape its plugin: a host option name simply lands
+    inside the namespace, where nothing declares it.
+  */
   testHostWritesRejected = {
     expr = (utils.evalHost { bad = fixtures.badWrite; } [ ]).config.rhizome.fragments;
 
@@ -50,10 +53,12 @@
     };
   };
 
-  # Every write is read by name, so a key nobody reads merges into
-  # nothing while the module looks like it did its job. Caught where the
-  # module is applied rather than where its writes are read, so leaving
-  # it disabled is no excuse — note nothing is enabled here.
+  /**
+    Every write is read by name, so a key nobody reads merges into
+    nothing while the module looks like it did its job. Caught where the
+    module is applied rather than where its writes are read, so leaving
+    it disabled is no excuse — note nothing is enabled here.
+  */
   testUnknownModuleKeyRejected = {
     expr = (utils.evalHost { inherit (fixtures) malformed; } [ ]).config;
     expectedError = {

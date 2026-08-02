@@ -1,3 +1,7 @@
+/**
+  Reports on the scope a rhizome module is handed, as options a case can
+  read. It writes nothing — the whole module is the two claims below.
+*/
 {
   self,
   global,
