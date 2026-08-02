@@ -2,7 +2,7 @@
 
 # Rhizome: a module system layered over the nixpkgs one. A rhizome
 # module declares options once and carries configuration for several
-# platforms (nixos, home-manager, custom classes like the editor).
+# platforms (nixos, home-manager, and classes of the caller's own).
 # Plugins are collections of such modules, shippable through flakes; a
 # mount installs them into a host fixpoint, where enablement — not
 # loading — is the cut.

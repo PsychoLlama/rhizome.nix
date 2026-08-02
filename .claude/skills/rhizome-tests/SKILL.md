@@ -9,7 +9,7 @@ description: Use when writing, changing, or debugging rhizome's test suite under
 ## Layout
 
 - `tests/default.nix` — grouping and wiring. One attribute per suite, nothing else.
-- `tests/utils.nix` — machinery to evaluate things with: `evalHost`, `buildWidget`, `evalNixos`, `evalDarwin`, `rhizomeFailures`. Knows about no fixture.
+- `tests/utils.nix` — machinery to evaluate things with: `evalHost`, `buildWidget`, `evalNixos`, `evalDarwin`, `evalHomeManager`, `hostedHomeManager`, `rhizomeFailures`. Knows about no fixture.
 - `tests/fixtures.nix` — the things to evaluate: plugins from `tests/fixtures/`, instantiated, and the hosts they mount into.
 - `tests/suites/<name>.nix` — one seam of the library each.
 - `tests/fixtures/<name>/modules/` — plugin sources `fixtures.nix` instantiates.
@@ -22,11 +22,12 @@ description: Use when writing, changing, or debugging rhizome's test suite under
 - `fixtures` — plugins and hosts under test.
 - `rhizome` — the library, via `import ../lib`, i.e. the entrypoint a consumer gets. Wired in `default.nix` and reaching `utils`/`fixtures` only; add it to the suite arguments if a case needs `plugin` or `mounts` directly.
 - Never import `lib/plugin.nix` or `lib/mounts/*.nix` by path. Go through `rhizome`.
-- `roots` — the real `nixosSystem`/`darwinSystem` evaluators, from `flake.nix`. Reaches `utils` only; a suite gets them as `evalNixos`/`evalDarwin`.
+- `roots` — the real `nixosSystem`/`darwinSystem`/`homeManagerConfiguration` evaluators, from `flake.nix`. Reaches `utils` only; a suite gets them as `evalNixos`/`evalDarwin`/`evalHomeManager`.
 
 ## Real hosts
 
-- `evalNixos`/`evalDarwin` mount the shipped roots into the module system nixpkgs and nix-darwin ship. Both pin their platform, so a case may name the system it expects.
+- `evalNixos`/`evalDarwin`/`evalHomeManager` mount the shipped roots into the module system nixpkgs, nix-darwin and home-manager ship. All three pin their platform, so a case may name the system it expects.
+- `hostedHomeManager <class>` adds the home-manager layer an OS host carries, which is what turns that root's `homeManager` router on.
 - Read config, never force a build. `system.build.toplevel` would drag the whole closure into a suite that is otherwise pure evaluation.
 - A real nixos host fails assertions of its own (no root filesystem, no bootloader). Narrow with `utils.rhizomeFailures` rather than expecting a clean list.
 

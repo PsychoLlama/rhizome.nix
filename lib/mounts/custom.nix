@@ -11,16 +11,16 @@
 
   There is no separate rhizome eval. The mount evaluates exactly once, on
   the top-level host — nixos when there is one, home-manager standalone,
-  or any custom `evalModules` (the editor). Fragments for the host's own
+  or any custom `evalModules` of your own. Fragments for the host's own
   class merge inline; fragments for every other class accumulate in
   `rhizome.fragments.<class>` for a router to carry onward.
 
   A module has three write blocks, one per target:
 
   ```nix
-  config.services.foo.enable = true;                # its own plugin
-  modules.nixos.users.users.bob.shell = ...;        # a host class
-  plugins."${inputs.hosts}".machines.x.enable = true; # another plugin
+  config.services.foo.enable = true;                    # its own plugin
+  modules.nixos.users.users.bob.shell = ...;            # a host class
+  plugins."${inputs.themes}".palettes.nord.enable = true; # another plugin
   ```
 
   Rhizome modules receive exactly six arguments — `self`, `cfg`,

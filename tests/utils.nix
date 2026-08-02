@@ -13,10 +13,10 @@
 # that wants a host of its own shape should reach for one rather than
 # call `lib.evalModules` by hand.
 #
-# `evalNixos` and `evalDarwin` stand in for nothing — they are the real
-# evaluators, mounted through the roots rhizome ships for them. Both pin
-# their platform, so a case can name the system it expects and get the
-# same answer on any builder.
+# `evalNixos`, `evalDarwin` and `evalHomeManager` stand in for nothing —
+# they are the real evaluators, mounted through the roots rhizome ships
+# for them. All three pin their platform, so a case can name the system
+# it expects and get the same answer on any builder.
 
 {
   # A minimal host standing in for nixos/home-manager: declares two

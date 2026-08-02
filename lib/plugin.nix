@@ -33,7 +33,7 @@ in
 
   ```nix
   inputs = {
-    hosts = throw "myPlugin: input `hosts` is required.";
+    themes = throw "myPlugin: input `themes` is required.";
     secrets = null;
   };
   ```
@@ -42,7 +42,7 @@ in
   way a consumer does — by interpolating it into the `plugins` block:
 
   ```nix
-  plugins."${inputs.hosts}".machines.laptop.enable = true;
+  plugins."${inputs.themes}".palettes.nord.enable = true;
   ```
 
   Inputs are load-time by construction: their job is to appear in
@@ -55,10 +55,10 @@ in
 
   ```nix
   let
-    hosts = inputs.hosts.plugin { };
-    myPlugin = inputs.myPlugin.plugin { inherit hosts; };
+    themes = inputs.themes.plugin { };
+    myPlugin = inputs.myPlugin.plugin { inherit themes; };
   in
-  rhizome.mounts.nixos { inherit myPlugin hosts; }
+  rhizome.mounts.nixos { inherit myPlugin themes; }
   ```
 
   The binding name is used only for error messages.
