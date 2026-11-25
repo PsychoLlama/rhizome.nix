@@ -96,6 +96,8 @@ result.collect file
 
 That evaluates to two files. Ada's has the pager and Grace's does not, because `git.settings` is bounded by the user.
 
+A group of units is a list, and lists nest. A component that several lists name is included once per scope, so two profiles may share a program. Given input, it is the same member when the input is equal too.
+
 A scope or component is called with an attrset to give it input and with a list to give it members. A channel is called with a value to write to it.
 
 ## What is checked

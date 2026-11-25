@@ -313,6 +313,44 @@ let
   };
 
   /**
+    Members, with a component that several lists name kept once. Two
+    profiles may both include a program, and it is still one program.
+
+    Given input, it is the same member when its input is equal too.
+
+    Two components are equal only when they are one definition: each holds
+    functions, and a function equals nothing but itself. For the same
+    reason, input holding a function makes an instance of its own.
+
+    # Type
+
+    ```
+    once :: [Node] -> [Node]
+    ```
+  */
+  once =
+    members:
+    (lib.foldl'
+      (
+        state: member:
+        if (member.kind or null) != "component" then
+          state // { kept = state.kept ++ [ member ]; }
+        else if lib.elem member state.seen then
+          state
+        else
+          {
+            seen = state.seen ++ [ member ];
+            kept = state.kept ++ [ member ];
+          }
+      )
+      {
+        seen = [ ];
+        kept = [ ];
+      }
+      members
+    ).kept;
+
+  /**
     A member that reads a channel and discards it.
 
     # Type
@@ -600,7 +638,7 @@ let
         inherit path;
         levels = context.levels ++ levels;
         pools = context.pools // lib.listToAttrs (map (level: lib.nameValuePair level.id read) levels);
-      }) (lib.flatten (node.members ++ ((apply node.definition input).members or [ ])));
+      }) (once (lib.flatten (node.members ++ ((apply node.definition input).members or [ ]))));
 
       slot = channel: entries: {
         inherit channel entries;

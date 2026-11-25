@@ -37,6 +37,12 @@ let
     config = { prefix }: [ (message "${prefix}!") ];
   };
 
+  # Says the same thing as `sender`, and is a different component.
+  echo = rhizome.component "echo" {
+    uses = { inherit prefix; };
+    config = { prefix }: [ (message "${prefix}!") ];
+  };
+
   receiver = rhizome.component "receiver" {
     uses.messages = message;
     config = { messages }: [ (report messages) ];
@@ -148,7 +154,7 @@ in
     expr = reports (
       team { prefix = "hi"; } [
         sender
-        sender
+        echo
         (rhizome.component "splitter" {
           uses.messages = message;
           emits = [ report ];
@@ -232,13 +238,59 @@ in
       expectedError = failure "team.hi.: emits `motto`, which nothing in root > team.hi. uses";
     };
 
+  # Two lists naming one component include it once.
+  testComponentsNamedTwiceAreIncludedOnce =
+    let
+      morning = [ sender ];
+      evening = [
+        sender
+        receiver
+      ];
+    in
+    {
+      expr = reports (
+        team { prefix = "hi"; } [
+          morning
+          evening
+        ]
+      );
+
+      expected = [ [ "hi!" ] ];
+    };
+
+  # Given input, it is the same member when the input is equal too.
+  testInstancesDifferByInput =
+    let
+      shout = rhizome.component "shout" (input: {
+        type.input.text = t.str;
+        config = [ (message input.text) ];
+      });
+    in
+    {
+      expr = reports (
+        team { prefix = "hi"; } [
+          (shout { text = "hey"; })
+          (shout { text = "hey"; })
+          (shout { text = "you"; })
+          receiver
+        ]
+      );
+
+      expected = [
+        [
+          "hey"
+          "you"
+        ]
+      ];
+    };
+
   # A group of members is a list, and lists nest.
   testMemberListsNest = {
     expr = reports (
       team { prefix = "hi"; } [
         [
           sender
-          [ sender ]
+          [ echo ]
         ]
         receiver
       ]
@@ -539,7 +591,7 @@ in
         ])
         (team { prefix = "hola"; } [
           sender
-          sender
+          echo
           receiver
         ])
       ]
