@@ -6,7 +6,9 @@
 - `lib/load.nix` loads a directory of unit files.
 - `lib/core.nix` defines and evaluates them. `types.nix`, `merge.nix` and `graph.nix` are independent of it.
 - Pure evaluation. The only dependency is nixpkgs' `lib`.
-- `README.md` describes the model: how this implementation meets the spec. Keep it in step with the code.
+- `README.md` is the pitch: what rhizome is and why. No reference material.
+- `skills/rhizome/` is the documentation, published as a Claude Code plugin: `concepts/`, `reference/` and `guides/`, one page per topic, indexed by `SKILL.md`. Keep it in step with the code.
+- Examples there are generic. House style (naming, comments, test layout) stays in this file, not in the skill.
 
 # Testing
 
@@ -22,5 +24,7 @@
 - Always prefer `lib` over `builtins`.
 - Use `/** ... */` docstrings, placed against the value they document.
 - Inline rationale stays a `#` comment.
+- Comments say what a reader cannot see in the code. No history.
+- An error should be clear on its own. If one needs explaining, fix the message.
 - Give a docstring a `# Type` block when the value is a function.
 - Errors start with `rhizome:` and name the path of the unit at fault.

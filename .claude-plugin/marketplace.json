@@ -1,0 +1,11 @@
+{
+  "name": "rhizome",
+  "owner": { "name": "PsychoLlama" },
+  "plugins": [
+    {
+      "name": "rhizome",
+      "source": "./",
+      "description": "Documentation for rhizome.nix, loaded when working with units and channels."
+    }
+  ]
+}

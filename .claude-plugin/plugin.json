@@ -1,0 +1,8 @@
+{
+  "name": "rhizome",
+  "description": "Documentation for rhizome.nix: concepts, API reference and guides.",
+  "version": "0.1.0",
+  "author": { "name": "PsychoLlama" },
+  "repository": "https://github.com/PsychoLlama/rhizome.nix",
+  "license": "MIT"
+}
