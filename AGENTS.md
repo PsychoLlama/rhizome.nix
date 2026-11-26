@@ -7,7 +7,7 @@
 - `lib/core.nix` defines and evaluates them. `types.nix`, `merge.nix` and `graph.nix` are independent of it.
 - Pure evaluation. The only dependency is nixpkgs' `lib`.
 - `README.md` is the pitch: what rhizome is and why. No reference material.
-- `skills/rhizome/` is the documentation, published as a Claude Code plugin: `concepts/`, `reference/` and `guides/`, one page per topic, indexed by `SKILL.md`. Keep it in step with the code.
+- `agents/skills/rhizome/` is the documentation, published as a Claude Code plugin: `concepts/`, `reference/` and `guides/`, one page per topic, indexed by `SKILL.md`. Keep it in step with the code.
 - Examples there are generic. House style (naming, comments, test layout) stays in this file, not in the skill.
 
 # Testing
