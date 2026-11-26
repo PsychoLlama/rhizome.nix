@@ -1,60 +1,75 @@
 # Rhizome
 
-Typed channels for composing Nix configuration.
+A typed graph layer above the Nix module system.
+
+> [!WARNING]
+> Code written by AI. Breaking changes and no backwards compatibility.
 
 ## Purpose
 
-The NixOS module system describes a machine well and organizes a growing configuration poorly: any module may set anything, nothing says who depends on whom, and every answer costs a whole system. Rhizome organizes the code that produces modules, or anything else. It does not replace them.
+NixOS modules have the same downsides as bash scripts. They take the entire world as input and do whatever they like.
 
-- A configuration is a tree of small units. Each says what it reads and what it writes.
-- Units meet only through typed channels, so every relationship is written down and checked.
-- Including a unit is what turns it on. There are no `enable` flags.
-- Values are bounded by where they are said. Two users, or two machines, never see each other's by accident.
-- One tree yields many things: modules for each machine, a document for an infrastructure tool, a graph. Each costs only what it reads.
-- Many trees coexist. The real one, a small one for a test, and one program built alone use the same units.
-- The whole tree is checked before anything is built, and errors name the unit at fault.
-- Plain Nix. The only dependency is nixpkgs' `lib`.
+The downsides grow with the scale of your ambition:
+
+- It's hard to share code between hosts, users, or contexts (nixos, home-manager, nix-darwin).
+- Projects don't compose. Using a feature from another repo brings along the universe.
+- Dependencies and effects are global. Tracing a change requires searching the codebase.
+- Getting data, configs, or packages out means evaluating a whole system.
+
+Rhizome sits above the module system. Units read and write typed channels, and a tree of scopes (hosts, users) decides who sees what.
+
+- Dependencies are explicit. A missing or unread value is an error naming the unit.
+- Scopes nest. Two hosts can configure the same unit differently.
+- Units are plain values with no global namespace.
+- One tree produces many outputs: NixOS/HM/Darwin modules, Prometheus scrape targets, Terraform inputs, etc.
 
 ## Example
 
+A laptop, two users, and units configuring `git` and `delta` programs.
+
 ```nix
-git = rhizome.unit "git" (git: {
-  # Anyone may contribute settings. They are merged once per user.
+# units/programs/git.nix
+rhizome.unit "git" (git: {
+  unit = rhizome.component {
+    uses.settings = git.settings;
+
+    config = { settings }: [
+      (home-manager.module {
+        programs.git = {
+          enable = true;
+          inherit settings;
+        };
+      })
+    ];
+  };
+
+  # A channel other units can write to.
   settings = rhizome.channel {
-    level = user.level;
-    type = t.attrs;
+    level = user.level; # Make it unique per user.
+    type = rhizome.types.attrs;
     merge = rhizome.merge.attrs.recursive;
   };
-
-  unit = rhizome.component {
-    uses = { inherit (git) settings; };
-
-    config =
-      { settings }:
-      [ (home-manager.module { programs.git = { enable = true; inherit settings; }; }) ];
-  };
-});
-
-delta = rhizome.unit "delta" {
-  unit = rhizome.component [ (git.settings { core.pager = "delta"; }) ];
-};
-
-tree = host.scope { name = "laptop"; } [
-  (user.scope { name = "ada"; } [ git.unit delta.unit ])
-  (user.scope { name = "grace"; } [ git.unit ])
-];
+})
 ```
 
-Ada gets the pager and Grace does not. Include `delta` without `git` and evaluation fails, naming the value nobody read.
-
-## Documentation
-
-- [Spec](./docs/spec/README.md): the problem, the goals, and the constraints.
-- [Documentation](./skills/rhizome/SKILL.md): concepts, API reference, and guides.
-
-The documentation is also a Claude Code plugin:
-
-```sh
-claude plugin marketplace add PsychoLlama/rhizome.nix
-claude plugin install rhizome@rhizome
+```nix
+# units/programs/delta.nix
+rhizome.unit "delta" {
+  # Another unit configures git's diff viewer.
+  unit = rhizome.component [
+    (git.settings { core.pager = "delta"; })
+  ];
+}
 ```
+
+```nix
+# units/hosts/laptop.nix
+rhizome.unit "laptop" {
+  unit = host.scope { name = "laptop"; } [
+    (user.scope { name = "gill"; } [ git.unit delta.unit ])
+    (user.scope { name = "bates"; } [ git.unit ])
+  ];
+}
+```
+
+Gill gets the pager and Bates doesn't. Give Bates `delta.unit` without `git.unit` and evaluation fails, naming exactly what failed and why.
