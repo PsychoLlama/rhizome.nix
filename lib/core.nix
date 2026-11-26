@@ -84,77 +84,87 @@ let
       throw "rhizome: ${where}: unknown field `${lib.head unknown}`; expected one of: ${toString allowed}";
 
   /**
-    A typed function from an input to a value.
+    A definition that has not been named. `unit` names it after the
+    attribute it is given under.
 
-        rhizome.data "network" (input: {
-          type.input = t.str;
-          type.output = { cidr = t.str; };
-          value = { cidr = input; };
-        })
-
-    The output type is nominal: only this definition produces values that
-    satisfy `type.output`.
+    Using one before it is named is a mistake, usually `rec` in place of
+    the unit's `self`. Calling it never throws, because a throw here would
+    be swallowed while a component is probed for what it emits. Each place
+    a definition lands checks with `named` and says so there.
 
     # Type
 
     ```
-    data :: String -> (Any -> AttrSet) -> Data
+    unnamed :: String -> (String -> Node) -> Unnamed
     ```
   */
-  data =
-    name: definition:
-    let
-      declared = declarations name definition;
-      id = identify name "value" declared;
-      input-type = types.from (declared.type.input or types.any);
-      shape = types.from (declared.type.output or types.attrs);
-    in
-    {
-      kind = "data";
-      inherit name id;
-      type = {
-        input = input-type;
-        output = types.data name id;
-      };
+  unnamed = what: build: {
+    kind = "unnamed";
+    id = "unnamed";
+    inherit what build;
 
-      __functor =
-        _: input:
-        validate "data `${name}`: output" shape
-          (definition (validate "data `${name}`: input" input-type input)).value
-        // {
-          __data = id;
-        };
-    };
+    __functor =
+      self: value:
+      if what == "channel" then
+        {
+          __emission = self.id;
+          channel = self;
+          inherit value;
+        }
+      else
+        self;
+  };
 
   /**
-    A labelled, typed set of helper functions built from declared inputs.
+    Pass a definition through, or throw when it has no name yet.
 
     # Type
 
     ```
-    lib :: String -> (AttrSet -> AttrSet) -> Lib
+    named :: String -> a -> a
     ```
   */
-  library =
-    name: definition:
-    let
-      declared = declarations name definition;
-      input-type = types.from (declared.type.input or { });
-      output-type = types.from (declared.type.output or types.attrs);
-    in
-    {
-      kind = "lib";
-      inherit name;
-      type = {
-        input = input-type;
-        output = output-type;
-      };
+  named =
+    where: value:
+    if lib.isAttrs value && (value.kind or null) == "unnamed" then
+      throw "${where}: this ${value.what} has no name yet. Define it in `rhizome.unit`, and refer to it through the unit: `rhizome.unit \"name\" (self: { … self.thing … })`"
+    else
+      value;
 
-      __functor =
-        _: input:
-        validate "lib `${name}`: output" output-type
-          (definition (validate "lib `${name}`: input" input-type input)).value;
-    };
+  /**
+    A named group of definitions. Each is named after its attribute:
+
+        rhizome.unit "dns" (self: {
+          record = rhizome.channel { … };       # dns.record
+          server = rhizome.component { … };     # dns.server
+          unit = [ self.server ];
+        })
+
+    `unit` is the attribute a consumer includes. A definition given as
+    `unit` takes the unit's own name.
+
+    Definitions refer to each other through `self`, never `rec`: what `rec`
+    sees has not been named. Anything that is not a definition passes
+    through untouched, so a unit can also hold plain values and functions.
+
+    # Type
+
+    ```
+    unit :: String -> (AttrSet -> AttrSet | AttrSet) -> AttrSet
+    ```
+  */
+  unit =
+    name: definitions:
+    let
+      self = lib.mapAttrs (
+        attribute: value:
+        if lib.isAttrs value && (value.kind or null) == "unnamed" then
+          value.build (if attribute == "unit" then name else "${name}.${attribute}")
+        else
+          value
+      ) (apply definitions self);
+    in
+    self;
 
   /**
     The outermost level: whoever evaluates the tree.
@@ -169,7 +179,7 @@ let
   /**
     A kind of scope, such as a fleet, a host, or a user.
 
-        rhizome.level "user" { within = level.host; }
+        user = rhizome.level { within = self.host; };
 
     `within` names the level it belongs inside. The outermost levels are
     within `rhizome.root`.
@@ -177,15 +187,18 @@ let
     # Type
 
     ```
-    level :: String -> { within :: Level } -> Level
+    level :: { within :: Level } -> Unnamed Level
     ```
   */
-  level =
+  level = definition: unnamed "level" (name: nameLevel name definition);
+
+  nameLevel =
     name: definition:
     let
-      within =
+      within = named "rhizome: level `${name}`: `within`" (
         definition.within
-          or (throw "rhizome: level `${name}` must say what it is `within`; the outermost is `rhizome.root`");
+          or (throw "rhizome: level `${name}` must say what it is `within`; the outermost is `rhizome.root`")
+      );
     in
     {
       kind = "level";
@@ -197,16 +210,15 @@ let
   /**
     A typed place that values are written to and read from.
 
-        rhizome.channel "git.settings" {
+        settings = rhizome.channel {
           level = level.user;
-          type.input = t.attrs;
+          type = t.attrs;
           merge = merge.attrs.recursive;
-        }
+        };
 
     - `level` bounds it. Everything written inside one scope of that level
       is merged into one value, visible inside that scope and nowhere else.
-    - `type.input` checks each value written. `type.output` checks the
-      merged value.
+    - `type` checks each value written.
     - `merge` turns the `{ from, value }` entries into the value readers
       receive. `merge.one` makes it a single value, such as a host's name.
     - `optional` allows what is written to go unread. Without it, a value
@@ -217,28 +229,27 @@ let
     # Type
 
     ```
-    channel :: String -> { level? :: Level, type? :: AttrSet, merge :: [Entry] -> Any, optional? :: Bool } -> Channel
+    channel :: { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Unnamed Channel
     ```
   */
-  channel =
+  channel = definition: unnamed "channel" (name: nameChannel name definition);
+
+  nameChannel =
     name: definition:
     let
       self = {
         kind = "channel";
         inherit name;
         id = identify name "merge" definition;
-        level = definition.level or root;
+        level = named "rhizome: channel `${name}`: `level`" (definition.level or root);
         merge = definition.merge or (throw "rhizome: channel `${name}` must name a `merge`");
         optional = definition.optional or false;
-        type = {
-          input = types.from (definition.type.input or types.any);
-          output = types.from (definition.type.output or types.any);
-        };
+        type = types.from (definition.type or types.any);
 
         __functor = _: value: {
           __emission = self.id;
           channel = self;
-          value = validate "channel `${name}`" self.type.input value;
+          value = validate "channel `${name}`" self.type value;
         };
       };
     in
@@ -252,17 +263,17 @@ let
   /**
     A leaf of the tree. It reads channels and emits into channels.
 
-        rhizome.component "git" {
+        git = rhizome.component {
           uses = { settings = git.settings; pkgs = host.pkgs; };
           config = { settings, pkgs }: [ (user.file { … }) (user.package pkgs.git) ];
-        }
+        };
 
     - `uses`: the channels it reads, each under a local name.
     - `config`: its emissions, or a function from what it uses to them.
       Lists may nest, so a helper can return several emissions.
     - `emits`: the channels `config` emits into. Only needed when the list
       itself, not just its payloads, depends on what the component uses.
-    - `type.input`, `label`: typed parameters and a name for the instance.
+    - `type`, `label`: typed parameters and a name for the instance.
       The definition is then a function: `input: { … }`.
 
     A component with nothing to declare can be just the list of emissions.
@@ -270,10 +281,12 @@ let
     # Type
 
     ```
-    component :: String -> Definition -> Component
+    component :: Definition -> Unnamed Component
     ```
   */
-  component = name: definition: {
+  component = definition: unnamed "component" (name: nameComponent name definition);
+
+  nameComponent = name: definition: {
     kind = "component";
     inherit name definition;
     input = { };
@@ -283,15 +296,15 @@ let
   /**
     A branch of the tree: one instance of a level.
 
-        rhizome.scope "user" (input: {
+        account = rhizome.scope (input: {
           level = level.user;
-          type.input.identity = identity.type.output;
-          members = [ (user.identity input.identity) user-to-module ];
-        })
+          type.name = t.str;
+          members = [ (user.name input.name) user-to-module ];
+        });
 
     - `level`: the level or levels it starts.
     - `members`: members of its own, alongside the ones it is given.
-    - `type.input`, `label`: as for a component.
+    - `type`, `label`: as for a component.
 
     Call it with an attrset to set its input, and with a list to set its
     members. A member is a component, a scope, a bare emission, or a list of
@@ -300,10 +313,12 @@ let
     # Type
 
     ```
-    scope :: String -> Definition -> Scope
+    scope :: Definition -> Unnamed Scope
     ```
   */
-  scope = name: definition: {
+  scope = definition: unnamed "scope" (name: nameScope name definition);
+
+  nameScope = name: definition: {
     kind = "scope";
     inherit name definition;
     input = { };
@@ -359,7 +374,7 @@ let
     ignore :: Channel -> Component
     ```
   */
-  ignore = channel: component "ignore `${channel.name}`" { uses.ignored = channel; };
+  ignore = channel: nameComponent "ignore `${channel.name}`" { uses.ignored = channel; };
 
   /**
     A path as it appears in errors and routes.
@@ -480,7 +495,7 @@ let
     context: emission:
     let
       where = show context.path;
-      inherit (emission) channel;
+      channel = named "rhizome: ${where}: emits" emission.channel;
     in
     {
       table.${channel.id} = {
@@ -515,9 +530,9 @@ let
 
       normalize = record: if lib.isList record then { config = record; } else record;
       declared = normalize (declarations node.name node.definition);
-      uses = declared.uses or { };
+      uses = lib.mapAttrs (local: named "rhizome: ${where}: uses `${local}`") (declared.uses or { });
 
-      input = validate "${where}: input" (types.from (declared.type.input or { })) node.input;
+      input = validate "${where}: input" (types.from (declared.type or { })) node.input;
       config = (normalize (apply node.definition input)).config or [ ];
 
       formals = if lib.isFunction config then lib.functionArgs config else { };
@@ -551,7 +566,9 @@ let
         lib.deepSeq (map (c: c.id) channels) channels
       );
 
-      emits = lib.seq input (
+      emits = map (named "rhizome: ${where}: emits") found;
+
+      found = lib.seq input (
         if unknown != [ ] then
           throw "rhizome: ${where}: `config` asks for `${lib.head unknown}`, which is not in `uses`"
         else if declared ? emits then
@@ -632,7 +649,7 @@ let
       levels = lib.toList (declared.level or [ ]);
       here = level: lib.any (started: started.id == level.id) levels;
 
-      input = validate "${where}: input" (types.from (declared.type.input or { })) node.input;
+      input = validate "${where}: input" (types.from (declared.type or { })) node.input;
 
       members = map (evaluate {
         inherit path;
@@ -642,7 +659,7 @@ let
 
       slot = channel: entries: {
         inherit channel entries;
-        value = validate "channel `${channel.name}`" channel.type.output (channel.merge entries);
+        value = channel.merge entries;
       };
 
       # Everything written inside this scope, keyed by channel. Each channel
@@ -759,7 +776,9 @@ let
     else if (node.kind or null) == "component" then
       evaluateComponent context node
     else
-      throw "rhizome: ${show context.path}: a member must be a component, a scope, or an emission";
+      throw "rhizome: ${show context.path}: a member must be a component, a scope, or an emission, got ${
+        if lib.isAttrs (named "rhizome: ${show context.path}" node) then "a set" else builtins.typeOf node
+      }";
 
   /**
     Evaluate a tree, or a list of members. The caller stands at the root and
@@ -786,7 +805,7 @@ let
     tree:
     let
       reachable = [ root ] ++ levels;
-      top = scope "root" { level = reachable; } (lib.toList tree);
+      top = nameScope "root" { level = reachable; } (lib.toList tree);
 
       result = evaluateScope {
         path = [ ];
@@ -827,13 +846,11 @@ in
   inherit
     channel
     component
-    data
     eval
     ignore
     level
     root
     scope
+    unit
     ;
-
-  lib = library;
 }

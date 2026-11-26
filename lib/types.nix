@@ -27,14 +27,7 @@ let
     describe :: Any -> String
     ```
   */
-  describe =
-    value:
-    if value ? __data then
-      "data `${lib.head (lib.splitString "@" value.__data)}`"
-    else if lib.isDerivation value then
-      "a derivation"
-    else
-      "a ${lib.typeOf value}";
+  describe = value: if lib.isDerivation value then "a derivation" else "a ${lib.typeOf value}";
 in
 
 rec {
@@ -122,18 +115,6 @@ rec {
     ```
   */
   default = type: value: from type // { default = value; };
-
-  /**
-    Matches only values built by one data definition. Structure is
-    irrelevant: a look-alike record is rejected.
-
-    # Type
-
-    ```
-    data :: String -> String -> Type
-    ```
-  */
-  data = name: id: mk "data `${name}`" (value: lib.isAttrs value && (value.__data or null) == id);
 
   /**
     Lets a plain attrset of types stand in for `record`.

@@ -9,18 +9,6 @@ let
     type = "ThrownError";
     inherit msg;
   };
-
-  point = rhizome.data "point" (input: {
-    type.input = {
-      x = t.int;
-      y = t.default t.int 0;
-    };
-    type.output = {
-      x = t.int;
-      y = t.int;
-    };
-    value = input;
-  });
 in
 
 {
@@ -97,61 +85,5 @@ in
   testValidateNamesWhereAndWhat = {
     expr = t.validate "here" t.str 1;
     expectedError = failure "rhizome: here: expected str, got a int";
-  };
-
-  testDataBuildsAValueAndFillsDefaults = {
-    expr = removeAttrs (point { x = 1; }) [ "__data" ];
-    expected = {
-      x = 1;
-      y = 0;
-    };
-  };
-
-  # Nominal: a record shaped like a point is not a point.
-  testDataTypesAreNominal = {
-    expr = [
-      (point.type.output.check (point {
-        x = 1;
-      }))
-      (point.type.output.check {
-        x = 1;
-        y = 0;
-      })
-    ];
-
-    expected = [
-      true
-      false
-    ];
-  };
-
-  # Strict: a built point is not a valid input to `point`.
-  testDataRejectsItsOwnOutputAsInput = {
-    expr = point (point {
-      x = 1;
-    });
-    expectedError = failure "data `point`: input: expected record . x y ., got data `point`";
-  };
-
-  testDataChecksItsOutput = {
-    expr =
-      (rhizome.data "broken" (_: {
-        type.output.x = t.int;
-        value.x = "one";
-      }) null).x;
-
-    expectedError = failure "data `broken`: output: expected record";
-  };
-
-  testLibChecksInputAndOutput = {
-    expr =
-      (rhizome.lib "shout" (input: {
-        type.input.suffix = t.str;
-        type.output.apply = t.function;
-        value.apply = text: "${text}${input.suffix}";
-      }) { suffix = "!"; }).apply
-        "hi";
-
-    expected = "hi!";
   };
 }
