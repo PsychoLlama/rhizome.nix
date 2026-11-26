@@ -20,6 +20,8 @@ in
       (check t.bool true)
       (check t.function (x: x))
       (check t.any null)
+      (check t.null null)
+      (check (t.either t.str t.null) 1)
     ];
 
     expected = [
@@ -29,6 +31,8 @@ in
       true
       true
       true
+      true
+      false
     ];
   };
 

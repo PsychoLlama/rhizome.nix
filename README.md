@@ -154,7 +154,7 @@ A merge is a function over `[ { from, value } ]`, so writing another is ordinary
 
 ## Types
 
-`rhizome.types` are validators: `str`, `int`, `bool`, `function`, `attrs`, `any`, `list`, `attrs-of`, `either`. A plain attrset of types is a closed record: a field it does not declare is an error, and so is a missing one, unless `default type value` makes it optional. Errors name the field at fault.
+`rhizome.types` are validators: `str`, `int`, `bool`, `null`, `function`, `attrs`, `any`, `list`, `attrs-of`, `either`. A plain attrset of types is a closed record: a field it does not declare is an error, and so is a missing one, unless `default type value` makes it optional. Errors name the field at fault.
 
 A channel's type is `channel.type`, so a record that carries another channel's values can say so: `type = { name = host.name.type; tags = t.list vpn.tag.type; }`. Change the channel and the record follows.
 

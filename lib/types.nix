@@ -49,6 +49,8 @@ rec {
   str = mk "str" lib.isString;
   int = mk "int" lib.isInt;
   bool = mk "bool" lib.isBool;
+  # Inside this `rec`, `null` is this type, so the value is told by its kind.
+  null = mk "null" (value: lib.typeOf value == "null");
   attrs = mk "attrs" lib.isAttrs;
   function = mk "function" lib.isFunction;
 
