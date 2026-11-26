@@ -60,33 +60,78 @@ rec {
     # Type
 
     ```
-    either :: Type -> Type -> Type
+    either :: Type | AttrSet -> Type | AttrSet -> Type
     ```
   */
-  either = a: b: mk "${a.name} or ${b.name}" (value: a.check value || b.check value);
+  either =
+    a: b:
+    let
+      first = from a;
+      second = from b;
+    in
+    mk "${first.name} or ${second.name}" (value: first.check value || second.check value);
 
   /**
-    A list whose every element is of one type.
+    A list whose every element is of one type. A plain attrset of types
+    stands in for a record, and its defaults are filled in each element.
 
     # Type
 
     ```
-    list :: Type -> Type
+    list :: Type | AttrSet -> Type
     ```
   */
-  list = of: mk "list of ${of.name}" (value: lib.isList value && lib.all of.check value);
+  list =
+    of:
+    let
+      type = from of;
+    in
+    mk "list of ${type.name}" (value: lib.isList value && lib.all type.check value)
+    // {
+      fill = map (type.fill or lib.id);
+
+      explain =
+        value:
+        let
+          wrong = lib.filter (index: !type.check (lib.elemAt value index)) (
+            lib.range 0 (lib.length value - 1)
+          );
+        in
+        if !lib.isList value then
+          "expected list of ${type.name}, got ${describe value}"
+        else
+          "[${toString (lib.head wrong)}]: ${explain type (lib.elemAt value (lib.head wrong))}";
+    };
 
   /**
-    An attrset whose every value is of one type.
+    An attrset whose every value is of one type. As with `list`, a plain
+    attrset of types stands in for a record.
 
     # Type
 
     ```
-    attrs-of :: Type -> Type
+    attrs-of :: Type | AttrSet -> Type
     ```
   */
   attrs-of =
-    of: mk "attrs of ${of.name}" (value: lib.isAttrs value && lib.all of.check (lib.attrValues value));
+    of:
+    let
+      type = from of;
+    in
+    mk "attrs of ${type.name}" (value: lib.isAttrs value && lib.all type.check (lib.attrValues value))
+    // {
+      fill = lib.mapAttrs (_: type.fill or lib.id);
+
+      explain =
+        value:
+        let
+          wrong = lib.filter (name: !type.check value.${name}) (lib.attrNames value);
+        in
+        if !lib.isAttrs value then
+          "expected attrs of ${type.name}, got ${describe value}"
+        else
+          "${lib.head wrong}: ${explain type value.${lib.head wrong}}";
+    };
 
   /**
     A closed record: every declared field must be present and valid, and

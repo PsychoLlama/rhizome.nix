@@ -112,4 +112,31 @@ in
     }) { };
     expectedError = failure "rhizome: here: missing field `x`";
   };
+
+  # Containers take a plain record, fill its defaults, and point at the
+  # element at fault.
+  testContainersOfRecordsFillDefaults = {
+    expr = t.validate "here" (t.from {
+      networks = t.attrs-of {
+        cidr = t.str;
+        pools = t.default (t.list { start = t.str; }) [ ];
+      };
+    }) { networks.home.cidr = "10.0.1.1/24"; };
+
+    expected.networks.home = {
+      cidr = "10.0.1.1/24";
+      pools = [ ];
+    };
+  };
+
+  testContainerErrorsNameTheElement = {
+    expr = t.validate "here" (t.attrs-of (t.list { start = t.str; })) {
+      home = [
+        { start = "a"; }
+        { start = 1; }
+      ];
+    };
+
+    expectedError = failure "rhizome: here: home: .1.: start: expected str, got a int";
+  };
 }
