@@ -24,16 +24,16 @@ There are four things to define, and a unit to hold them.
 - **Level**: a kind of place in the tree, such as a host or a user. Levels say what they sit `within`.
 - **Channel**: a typed value that many components write and that is merged once. A channel belongs to a level, and what is written inside one host never reaches another.
 - **Component**: a leaf. It names the channels it `uses` and returns a list of values written to other channels.
-- **Scope**: a group of members that starts a level. A host is a scope, and so is a user.
+- **Scope**: one instance of a level, holding members. It is made from its level, and several scopes may implement one: a real host and a test double are both hosts.
 - **Unit**: a named group of definitions. Each is named after its attribute, so `settings` in the unit `git` is `git.settings` in errors and graphs.
 
 ```nix
 let
   t = rhizome.types;
 
-  level = rhizome.unit "level" (self: {
-    host = rhizome.level { within = rhizome.root; };
-    user = rhizome.level { within = self.host; };
+  host = rhizome.unit "host" (host: {
+    level = rhizome.level { within = rhizome.root; };
+    scope = host.level.scope { };
   });
 
   # Reaches the root, where the caller collects it.
@@ -47,33 +47,34 @@ let
     };
   };
 
-  user = rhizome.unit "user" (self: {
+  user = rhizome.unit "user" (user: {
+    level = rhizome.level { within = host.level; };
+
     # One value per user, written by whoever starts the user.
     name = rhizome.channel {
-      level = level.user;
+      level = user.level;
       type = t.str;
       merge = rhizome.merge.one;
     };
 
-    scope = rhizome.scope (input: {
-      level = level.user;
-      type.name = t.str;
-      label = input.name;
-      members = [ (self.name input.name) ];
+    scope = user.level.scope (cfg: {
+      type.name = user.name.type;
+      label = cfg.name;
+      config = [ (user.name cfg.name) ];
     });
   });
 
-  git = rhizome.unit "git" (self: {
+  git = rhizome.unit "git" (git: {
     # Many units contribute settings. They are merged per user.
     settings = rhizome.channel {
-      level = level.user;
+      level = user.level;
       type = t.attrs;
       merge = rhizome.merge.attrs.recursive;
     };
 
     unit = rhizome.component {
       uses = {
-        inherit (self) settings;
+        inherit (git) settings;
         inherit (user) name;
       };
 
@@ -92,11 +93,7 @@ let
     unit = rhizome.component [ (git.settings { core.pager = "delta"; }) ];
   };
 
-  machine = rhizome.unit "machine" {
-    scope = rhizome.scope { level = level.host; };
-  };
-
-  tree = machine.scope [
+  tree = host.scope [
     (user.scope { name = "ada"; } [
       git.unit
       delta.unit
@@ -116,11 +113,13 @@ A group of units is a list, and lists nest. A component that several lists name 
 
 A scope or component is called with an attrset to give it input and with a list to give it members. A channel is called with a value to write to it.
 
+Input is typed by `type`, and the definition is then a function of it, conventionally `cfg: { … }`. A scope's `config` is the members it brings itself; a component's is what it writes.
+
 ### Units
 
 `unit` is the attribute a consumer includes, and a definition given as `unit` takes the unit's own name: `git.unit` above is `git`. Everything else in a unit is what it offers alongside: channels, parts, plain values and functions, which pass through untouched.
 
-Definitions refer to each other through `self`, never `rec`. What `rec` sees has not been named yet, and using it is an error.
+Definitions refer to each other through the unit, which the function receives under the unit's own name: `rhizome.unit "git" (git: { … git.settings … })`. Never `rec`: what `rec` sees has not been named yet, and using it is an error.
 
 `rhizome.load ./units { inherit inputs lib; }` loads a directory of unit files as one attrset that mirrors it. Each file is a function of those arguments plus `rhizome` and `units`, the whole tree.
 
@@ -134,7 +133,7 @@ The tree is checked before `eval` returns anything, including the parts nothing 
 - Channels form a cycle. The error names the component behind each edge.
 - A definition has a field rhizome does not know, or input of the wrong type.
 
-Errors name the path: `root > machine.scope > user.scope[ada] > git: uses …`.
+Errors name the path: `root > host.scope > user.scope[ada] > git: uses …`.
 
 The values themselves stay lazy. A payload is type-checked when it is read.
 
@@ -155,7 +154,9 @@ A merge is a function over `[ { from, value } ]`, so writing another is ordinary
 
 ## Types
 
-`rhizome.types` are validators: `str`, `int`, `bool`, `function`, `attrs`, `any`, `list`, `attrs-of`, `either`. A plain attrset of types is a closed record, and `default type value` makes a field optional.
+`rhizome.types` are validators: `str`, `int`, `bool`, `function`, `attrs`, `any`, `list`, `attrs-of`, `either`. A plain attrset of types is a closed record: a field it does not declare is an error, and so is a missing one, unless `default type value` makes it optional. Errors name the field at fault.
+
+A channel's type is `channel.type`, so a record that carries another channel's values can say so: `type = { name = host.name.type; tags = t.list vpn.tag.type; }`. Change the channel and the record follows.
 
 ## Graphs
 
@@ -175,7 +176,7 @@ nix eval --raw .#graph | dot -Tsvg > graph.svg
 Units are plain values, so they are tested with [nix-unit](https://github.com/nix-community/nix-unit) and no machine. Passing `levels` to `eval` stands in for the scopes a unit expects:
 
 ```nix
-(rhizome.eval { levels = [ level.host level.user ]; } [
+(rhizome.eval { levels = [ host.level user.level ]; } [
   (user.name "ada")
   git.unit
   delta.unit

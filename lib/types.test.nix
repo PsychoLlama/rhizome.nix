@@ -86,4 +86,26 @@ in
     expr = t.validate "here" t.str 1;
     expectedError = failure "rhizome: here: expected str, got a int";
   };
+
+  # A record names the field at fault, however deep.
+  testRecordErrorsNameAWrongField = {
+    expr = t.validate "here" (t.from { point.x = t.int; }) { point.x = "one"; };
+    expectedError = failure "rhizome: here: point: x: expected int, got a string";
+  };
+
+  testRecordErrorsNameAnUnknownField = {
+    expr = t.validate "here" (t.from { x = t.int; }) {
+      x = 1;
+      y = 2;
+    };
+    expectedError = failure "rhizome: here: unknown field `y`; expected one of: x";
+  };
+
+  testRecordErrorsNameAMissingField = {
+    expr = t.validate "here" (t.from {
+      x = t.int;
+      y = t.default t.int 0;
+    }) { };
+    expectedError = failure "rhizome: here: missing field `x`";
+  };
 }

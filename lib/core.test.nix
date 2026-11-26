@@ -5,7 +5,7 @@ let
   inherit (rhizome) merge;
 
   # Tests define things one at a time. Each is a unit of one, named for
-  # itself.
+  # itmail.
   define =
     builder: name: definition:
     (rhizome.unit name { unit = builder definition; }).unit;
@@ -13,9 +13,10 @@ let
   level = define rhizome.level;
   channel = define rhizome.channel;
   component = define rhizome.component;
-  scope = define rhizome.scope;
 
   group = level "group" { within = rhizome.root; };
+
+  seat = level "seat" { within = group; };
 
   # A single value, written by the scope. Nobody has to read it.
   prefix = channel "prefix" {
@@ -60,11 +61,10 @@ let
   };
 
   # A scope that starts a `group` and writes its prefix.
-  team = scope "team" (input: {
-    level = group;
+  team = define group.scope "team" (cfg: {
     type.prefix = t.str;
-    label = input.prefix;
-    members = [ (prefix input.prefix) ];
+    label = cfg.prefix;
+    config = [ (prefix cfg.prefix) ];
   });
 
   reports = tree: (rhizome.eval { } tree).collect report;
@@ -271,9 +271,9 @@ in
   # Given input, it is the same member when the input is equal too.
   testInstancesDifferByInput =
     let
-      shout = component "shout" (input: {
+      shout = component "shout" (cfg: {
         type.text = t.str;
-        config = [ (message input.text) ];
+        config = [ (message cfg.text) ];
       });
     in
     {
@@ -499,18 +499,18 @@ in
 
   testInputIsTypeChecked = {
     expr = reports (team { prefix = 1; } [ ]);
-    expectedError = failure "root > team: input: expected record";
+    expectedError = failure "root > team: input: prefix: expected str, got a int";
   };
 
   # A field with a default may be left out.
   testInputFieldsCanHaveDefaults =
     let
-      greeter = component "greeter" (input: {
+      greeter = component "greeter" (cfg: {
         type = {
           name = t.str;
           greeting = t.default t.str "hello";
         };
-        config = [ (report [ "${input.greeting} ${input.name}" ]) ];
+        config = [ (report [ "${cfg.greeting} ${cfg.name}" ]) ];
       });
     in
     {
@@ -568,13 +568,13 @@ in
       ];
     };
 
-  # A declaration must not depend on input.
+  # A declaration must not depend on cfg.
   testDeclarationsCannotUseInput = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "dynamic" (input: {
+        (component "dynamic" (cfg: {
           type.loud = t.bool;
-          uses = if input.loud then { messages = message; } else { };
+          uses = if cfg.loud then { messages = message; } else { };
         }) { loud = true; })
       ]
     );
@@ -594,7 +594,7 @@ in
   # Each team bounds `message`: the two do not see each other's.
   testLevelsBoundChannels = {
     expr = reports (
-      scope "company" { } [
+      define (level "company" { within = rhizome.root; }).scope "company" { } [
         (team { prefix = "hello"; } [
           sender
           receiver
@@ -620,7 +620,7 @@ in
   testChannelsPassThroughOtherScopes = {
     expr = reports (
       team { prefix = "hey"; } [
-        (scope "subteam" { } [ sender ])
+        (define seat.scope "subteam" { } [ sender ])
         receiver
       ]
     );
@@ -629,13 +629,45 @@ in
   };
 
   # `within` orders levels: a group cannot start inside a seat.
-  testLevelsCannotNestInsideOut =
+  testLevelsCannotNestInsideOut = {
+    expr = reports (define seat.scope "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
+    expectedError = failure "team.hi.: starts a level inside `seat`, which belongs inside it";
+  };
+
+  # A second scope for the same level: a stand-in for `team` that needs
+  # no input.
+  testSeveralScopesCanImplementALevel = {
+    expr = reports (
+      define group.scope "double" { config = [ (prefix "test") ]; } [
+        sender
+        receiver
+      ]
+    );
+
+    expected = [ [ "test!" ] ];
+  };
+
+  # A channel's type can be reused, so a record that carries its values
+  # changes with it.
+  testChannelTypesCanBeReferenced =
     let
-      seat = level "seat" { within = group; };
+      summary = channel "summary" {
+        type = {
+          first = message.type;
+          all = t.list message.type;
+        };
+        merge = merge.one;
+      };
     in
     {
-      expr = reports (scope "desk" { level = seat; } [ (team { prefix = "hi"; } [ ]) ]);
-      expectedError = failure "team.hi.: starts a level inside `seat`, which belongs inside it";
+      expr =
+        (rhizome.eval { } (summary {
+          first = 1;
+          all = [ ];
+        })).collect
+          summary;
+
+      expectedError = failure "channel `summary`: first: expected str, got a int";
     };
 
   # One uses messages and emits replies; the other does the reverse.
@@ -674,23 +706,23 @@ in
   };
 
   # A unit names its definitions after their attributes, and `unit` after
-  # itself.
+  # itmail.
   testUnitNamesDefinitions =
     let
-      mail = rhizome.unit "mail" (self: {
+      mail = rhizome.unit "mail" (mail: {
         letter = rhizome.channel {
           type = t.str;
           merge = merge.entries;
         };
 
-        writer = rhizome.component [ (self.letter "dear") ];
-        unit = rhizome.component [ (self.letter "sincerely") ];
+        writer = rhizome.component [ (mail.letter "dear") ];
+        unit = rhizome.component [ (mail.letter "sincerely") ];
 
         # Anything else passes through.
         stamp = 1;
         both = [
-          self.writer
-          self.unit
+          mail.writer
+          mail.unit
         ];
       });
     in

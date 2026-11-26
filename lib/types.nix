@@ -28,6 +28,20 @@ let
     ```
   */
   describe = value: if lib.isDerivation value then "a derivation" else "a ${lib.typeOf value}";
+
+  /**
+    Why a value does not satisfy a type. A record points at the field at
+    fault instead of describing the whole record.
+
+    # Type
+
+    ```
+    explain :: Type -> Any -> String
+    ```
+  */
+  explain =
+    type: value:
+    if type ? explain then type.explain value else "expected ${type.name}, got ${describe value}";
 in
 
 rec {
@@ -97,6 +111,22 @@ rec {
       && lib.all (name: types ? ${name}) (lib.attrNames value)
     )
     // {
+      explain =
+        value:
+        let
+          unknown = lib.filter (name: !(types ? ${name})) (lib.attrNames value);
+          missing = lib.filter (name: !(value ? ${name}) && !(types.${name} ? default)) names;
+          wrong = lib.filter (name: value ? ${name} && !types.${name}.check value.${name}) names;
+        in
+        if !lib.isAttrs value then
+          "expected record { ${toString names} }, got ${describe value}"
+        else if unknown != [ ] then
+          "unknown field `${lib.head unknown}`; expected one of: ${toString names}"
+        else if missing != [ ] then
+          "missing field `${lib.head missing}`"
+        else
+          "${lib.head wrong}: ${explain types.${lib.head wrong} value.${lib.head wrong}}";
+
       # Fields left out take their defaults.
       fill =
         value:
@@ -142,5 +172,5 @@ rec {
     if type.check value then
       (type.fill or lib.id) value
     else
-      throw "rhizome: ${context}: expected ${type.name}, got ${describe value}";
+      throw "rhizome: ${context}: ${explain type value}";
 }
