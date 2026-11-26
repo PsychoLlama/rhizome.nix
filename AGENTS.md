@@ -1,11 +1,12 @@
 # Project
 
+- `docs/spec/` says what rhizome is for: the problem, goals and constraints. Read it before changing the model. A change that serves no goal there, or breaks a constraint, needs the spec changed first.
 - Rhizome: typed channels for composing Nix configuration.
 - Four entities: level, channel, component, scope. `rhizome.unit` names a group of them after their attributes.
 - `lib/load.nix` loads a directory of unit files.
 - `lib/core.nix` defines and evaluates them. `types.nix`, `merge.nix` and `graph.nix` are independent of it.
 - Pure evaluation. The only dependency is nixpkgs' `lib`.
-- `README.md` describes the model. Keep it in step with the code.
+- `README.md` describes the model: how this implementation meets the spec. Keep it in step with the code.
 
 # Testing
 
