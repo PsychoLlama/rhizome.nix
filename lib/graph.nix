@@ -16,18 +16,6 @@ let
   join = address.show-trail;
 
   /**
-    What a node or an instance is labelled with: its own step, without the
-    instances above it.
-
-    # Type
-
-    ```
-    label :: [Step] -> String
-    ```
-  */
-  label = trail: address.show-step (lib.last trail);
-
-  /**
     A string as a quoted Graphviz id.
 
     # Type
@@ -36,7 +24,21 @@ let
     quote :: String -> String
     ```
   */
-  quote = text: ''"${lib.escape [ ''"'' "\\" ] text}"'';
+  quote = text: ''"${escape text}"'';
+
+  /**
+    A string made safe to sit inside a quoted Graphviz id.
+
+    # Type
+
+    ```
+    escape :: String -> String
+    ```
+  */
+  escape = lib.escape [
+    ''"''
+    "\\"
+  ];
 in
 
 {
@@ -59,15 +61,33 @@ in
     host's name, are dashed. An instance that writes a value itself appears as a
     node inside its own box.
 
+    `display` says what is printed for each box and on each edge. It is
+    given `{ address, label }`: the definition's address, and the label
+    telling instances of it apart, or null. Without it the full name is
+    printed, `platform.host.instance[nas-001]`. A project can print less,
+    since it knows which parts of its names are convention:
+
+        display = { address, label }: lib.last address.path;
+
+    It changes only what is printed. Nodes are still told apart by where
+    they are.
+
     # Type
 
     ```
-    dot :: [Route] -> String
+    dot :: { display? :: Step -> String } -> [Route] -> String
     ```
   */
   dot =
+    {
+      display ? address.show-step,
+    }:
     routes:
     let
+      # What a node or an instance is printed as: its own step, without
+      # the instances above it.
+      label = trail: display (lib.last trail);
+
       # One trail per node, however many routes touch it.
       paths = lib.attrValues (
         lib.listToAttrs (
@@ -111,7 +131,17 @@ in
         _: group:
         let
           inherit (lib.head group) from to single;
-          facts = lib.concatStringsSep "\\n" (lib.unique (map (route: route.fact.name) group));
+          facts = lib.concatStringsSep "\\n" (
+            lib.unique (
+              map (
+                route:
+                escape (display {
+                  inherit (route.fact) address;
+                  label = null;
+                })
+              ) group
+            )
+          );
         in
         "  ${quote (join from)} -> ${quote (join to)} [label=\"${facts}\"${lib.optionalString single ", style=dashed, color=gray50, fontcolor=gray50"}];"
       ) (lib.groupBy (route: "${join route.from}\n${join route.to}\n${toString route.single}") routes);

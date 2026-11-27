@@ -49,7 +49,7 @@ let
     )
   ];
 
-  dot = graph.dot routes;
+  dot = graph.dot { } routes;
 in
 
 {
@@ -70,6 +70,25 @@ in
       ''subgraph "cluster root > team" {''
       ''"root > team > sender" [label="sender"];''
     ];
+
+    expected = [
+      true
+      true
+      true
+    ];
+  };
+
+  # A project decides what is printed. Where a node is stays its identity.
+  testDotPrintsWhatDisplaySays = {
+    expr =
+      let
+        loud = graph.dot { display = { address, label }: lib.toUpper address.name; } routes;
+      in
+      map (text: lib.hasInfix text loud) [
+        ''subgraph "cluster root > team" {''
+        ''"root > team > sender" [label="SENDER"];''
+        ''[label="MESSAGE\nREPLY"];''
+      ];
 
     expected = [
       true
@@ -99,7 +118,8 @@ in
   };
 
   testDotOfNothingIsAnEmptyGraph = {
-    expr = lib.hasPrefix "digraph rhizome {" (graph.dot [ ]) && lib.hasSuffix "}\n" (graph.dot [ ]);
+    expr =
+      lib.hasPrefix "digraph rhizome {" (graph.dot { } [ ]) && lib.hasSuffix "}\n" (graph.dot { } [ ]);
     expected = true;
   };
 
