@@ -2,7 +2,6 @@
   lib,
   address,
   types,
-  holds,
 }:
 
 let
@@ -132,24 +131,20 @@ let
   */
   pending =
     origin: what: definition: build:
+    let
+      stated = what == "fact" || what == "collection";
+    in
     lib.fix (
       self:
       {
         kind = "pending";
         id = "pending";
         inherit origin what build;
-        source = written what definition;
-
-        each = value: {
-          __emission = self.id;
-          fact = self;
-          each = true;
-          inherit value;
-        };
+        source = written definition;
 
         __functor =
           _: value:
-          if what == "fact" then
+          if stated then
             {
               __emission = self.id;
               fact = self;
@@ -161,9 +156,16 @@ let
       // lib.optionalAttrs (what == "scope") {
         instance = instanceOf self;
       }
-      // lib.optionalAttrs (what == "fact") {
-        # Reading a fact's type needs no name.
-        type = types.from ((factRecord definition).type or types.any);
+      // lib.optionalAttrs stated {
+        # Reading a type needs no name.
+        type = types.from (definition.type or types.any);
+
+        each = value: {
+          __emission = self.id;
+          fact = self;
+          each = true;
+          inherit value;
+        };
       }
     );
 
@@ -174,21 +176,15 @@ let
     # Type
 
     ```
-    written :: String -> Definition -> String | Null
+    written :: Definition -> String | Null
     ```
   */
   written =
-    what: definition:
+    definition:
     let
       found = builtins.tryEval (
         let
-          record =
-            if what == "fact" then
-              factRecord definition
-            else if lib.isFunction definition then
-              definition (throw "input")
-            else
-              definition;
+          record = if lib.isFunction definition then definition (throw "input") else definition;
 
           positions = lib.filter (position: position != null) (
             map (attribute: lib.unsafeGetAttrPos attribute record) (lib.attrNames record)
@@ -228,7 +224,7 @@ let
           unit = define.unit { provides = [ (self.record "…") ]; };
         });
 
-    - `define`: the builders `scope`, `fact`, `unit` and `group`.
+    - `define`: the builders `scope`, `fact`, `collection`, `unit` and `group`.
       There are no others, so nothing is defined outside a module.
     - `self`: what the module exports, named.
 
@@ -262,6 +258,7 @@ let
       builders = {
         scope = builder "scope" nameScope;
         fact = builder "fact" nameFact;
+        collection = builder "collection" nameCollection;
         unit = builder "unit" nameUnit;
         group = builder "group" nameGroup;
       };
@@ -315,6 +312,7 @@ let
   */
   kinds = [
     "fact"
+    "collection"
     "unit"
     "group"
     "scope"
@@ -380,78 +378,108 @@ let
     });
 
   /**
-    Something units state and other units read, without either naming the
-    other: a host's name, a tag it carries, a module for its config.
+    One value that units state and other units read, without either naming
+    the other: a host's name, the editor to build.
 
-        settings = define.fact ({ many, as, ... }: {
+        name = define.fact { scope = host.scope; type = t.str; };
+
+        editor = define.fact {
           scope = user.scope;
-          type = t.attrs;
-          holds = many as.attrs;
-        });
+          type = t.function;
+          default = pkgs: pkgs.neovim;
+        };
 
-    - `scope` bounds it. Everything stated inside one instance of that scope
+    - `scope` bounds it. What is stated inside one instance of that scope
       reaches the readers inside that instance and nowhere else.
-    - `type` checks each value stated.
-    - `holds` says how many values it takes and what readers receive:
-      - `one`: stated exactly once, such as a host's name.
-      - `one.with-default value`: stated at most once.
-      - `many how`: stated any number of times. `how` turns the
-        `{ from, value }` entries into what readers receive: `as.list`,
-        `as.entries`, `as.unique`, `as.attrs`, or a function of your own.
+    - `type` checks the value stated.
+    - `default` is what readers receive when nothing states it. Without
+      one, a fact that is read must be stated. Either way it is stated
+      once at most.
     - `allow-unread` lets what is stated go unread. Without it, a value
       nobody reads is an error, so nothing is silently dropped.
-
-    The definition is a function so that `one`, `many` and `as` exist only
-    where a fact is defined.
 
     Calling a fact with a value makes an emission. Payloads stay lazy.
 
     # Type
 
     ```
-    nameFact :: Address -> (Toolbox -> { scope? :: Scope, type? :: Type, holds :: Holds, allow-unread? :: Bool }) -> Fact
+    nameFact :: Address -> { scope? :: Scope, type? :: Type, default? :: Any, allow-unread? :: Bool } -> Fact
     ```
   */
   nameFact =
     address: definition:
+    stated "fact" address definition [ "default" ] (self: {
+      default =
+        if definition ? default then
+          { value = validate "fact `${self.name}`: default" self.type definition.default; }
+        else
+          null;
+    });
+
+  /**
+    Any number of values, stated by whoever has one: a host's tags, the
+    modules that configure it. Readers receive them as a list.
+
+        tag = define.collection { scope = host.scope; type = t.str; };
+
+        module = define.collection {
+          scope = host.scope;
+          combine = entries: entries;
+        };
+
+    - `scope`, `allow-unread`: as for a fact.
+    - `type` checks each value stated.
+    - `combine` turns what was stated into what readers receive. It is
+      given entries, `{ from, value }`, where `from` is the trail of
+      whoever stated the value. Without it, readers receive the values.
+
+    Calling a collection with a value makes an emission. `collection.each`
+    takes a list of them, for when how many there are depends on what a
+    unit uses.
+
+    # Type
+
+    ```
+    nameCollection :: Address -> { scope? :: Scope, type? :: Type, combine? :: [Entry] -> Any, allow-unread? :: Bool } -> Collection
+    ```
+  */
+  nameCollection =
+    address: definition:
+    stated "collection" address definition [ "combine" ] (_: {
+      combine = definition.combine or (map (entry: entry.value));
+    });
+
+  /**
+    What a fact and a collection share: a scope, a type, and being stated.
+
+    # Type
+
+    ```
+    stated :: String -> Address -> AttrSet -> [String] -> (Node -> AttrSet) -> Node
+    ```
+  */
+  stated =
+    kind: address: definition: fields: extra:
     let
       name = display address;
-      record = factRecord definition;
 
-      chosen =
-        record.holds
-          or (throw "rhizome: fact `${name}` must say what it `holds`: `one`, `one.with-default <value>` or `many <how>`");
+      record =
+        if lib.isAttrs definition then
+          definition
+        else
+          throw "rhizome: ${kind} `${name}` is a record, got a ${builtins.typeOf definition}";
 
       self = {
-        kind = "fact";
-        inherit address name;
-        id = identify address "holds" record;
-        scope = named "rhizome: fact `${name}`: `scope`" (record.scope or root);
+        inherit kind address name;
+        id = identify address (if record ? scope then "scope" else "type") record;
+        scope = named "rhizome: ${kind} `${name}`: `scope`" (record.scope or root);
         allow-unread = record.allow-unread or false;
         type = types.from (record.type or types.any);
-
-        # Plain data, so a tool can tell what a fact holds:
-        # `{ count = "one"; default = null | { value }; }` or
-        # `{ count = "many"; as = <function of the entries>; }`.
-        holds =
-          if !(lib.isAttrs chosen && chosen ? count) then
-            throw "rhizome: fact `${name}`: `holds` is `one`, `one.with-default <value>` or `many <how>`"
-          else if chosen.count == "many" then
-            { inherit (chosen) count as; }
-          else
-            {
-              inherit (chosen) count;
-              default =
-                if chosen.default == null then
-                  null
-                else
-                  { value = validate "fact `${name}`: default" self.type chosen.default.value; };
-            };
 
         __functor = _: value: {
           __emission = self.id;
           fact = self;
-          value = validate "fact `${name}`" self.type value;
+          value = validate "${kind} `${name}`" self.type value;
         };
 
         # Any number of values in one emission. The list may depend on
@@ -460,46 +488,37 @@ let
           __emission = self.id;
           fact = self;
           each = true;
-          value = map (validate "fact `${name}`" self.type) values;
+          value = map (validate "${kind} `${name}`" self.type) values;
         };
-      };
+      }
+      // extra self;
     in
-    lib.seq (known "fact `${name}`" [
-      "allow-unread"
-      "holds"
-      "scope"
-      "type"
-    ] record) self;
+    lib.seq (known "${kind} `${name}`" (
+      [
+        "allow-unread"
+        "scope"
+        "type"
+      ]
+      ++ fields
+    ) record) self;
 
   /**
-    A fact's definition as a record. Given as a function, it receives what
-    `holds` can be: `{ one, many, as }`.
+    What readers receive, given the entries stated.
 
     # Type
 
     ```
-    factRecord :: AttrSet | (Toolbox -> AttrSet) -> AttrSet
-    ```
-  */
-  factRecord = definition: if lib.isFunction definition then definition holds else definition;
-
-  /**
-    What readers of a fact receive, given the entries stated for it.
-
-    # Type
-
-    ```
-    resolve :: Fact -> [Entry] -> Any
+    resolve :: Fact | Collection -> [Entry] -> Any
     ```
   */
   resolve =
     fact: entries:
-    if fact.holds.count == "many" then
-      fact.holds.as entries
+    if fact.kind == "collection" then
+      fact.combine entries
     else if entries != [ ] then
       (lib.head entries).value
-    else if fact.holds.default != null then
-      fact.holds.default.value
+    else if fact.default != null then
+      fact.default.value
     else
       throw "rhizome: nothing provides `${fact.name}`";
 
@@ -519,8 +538,8 @@ let
       input: `input: { … }`.
 
     Which facts a unit provides must not depend on what it uses, because
-    that is worked out before anything is read. To give a fact a number of
-    values that does depend on it, use one emission: `fact.each [ … ]`.
+    that is worked out before anything is read. To give a collection a number of
+    values that does depend on it, use one emission: `collection.each [ … ]`.
 
     # Type
 
@@ -778,7 +797,7 @@ let
       A unit that uses a fact makes everything it provides depend on it. If only part of one does, split it.'';
 
   /**
-    The entries one emission makes: one, or one per value for `fact.each`.
+    The entries one emission makes: one, or one per value for `collection.each`.
     How many there are is not known until the payload is read.
 
     # Type
@@ -800,8 +819,7 @@ let
       ];
 
   /**
-    A fact holding one value takes one statement, so `each` has no place
-    on it. Checking this needs no payload.
+    A fact takes one statement, so `each` has no place on it. Checking this needs no payload.
 
     # Type
 
@@ -811,8 +829,8 @@ let
   */
   countable =
     where: emission:
-    !(emission.each or false && emission.fact.holds.count == "one")
-    || throw "rhizome: ${where}: `${emission.fact.name}` holds one value, so it cannot be given `each`";
+    !(emission.each or false && emission.fact.kind == "fact")
+    || throw "rhizome: ${where}: `${emission.fact.name}` is a fact, which holds one value. `each` is for collections";
 
   /**
     A bare emission in a member list: written by the instance it sits in.
@@ -901,7 +919,7 @@ let
         else if probe.success then
           distinct probe.value
         else
-          throw "rhizome: ${where}: which facts it provides depends on what it uses. The list must not: give a fact a varying number of values with `fact.each`"
+          throw "rhizome: ${where}: which facts it provides depends on what it uses. The list must not: give a collection a varying number of values with `collection.each`"
       );
 
       emissions = map (emission: emission // { fact = factOf emission; }) (run used);
@@ -994,7 +1012,7 @@ let
       entries = fact: (pool.${fact.id} or { entries = [ ]; }).entries;
       read = fact: (pool.${fact.id} or (slot fact [ ])).value;
 
-      single = fact: fact.holds.count == "one";
+      single = fact: fact.kind == "fact";
 
       allReaders = lib.concatMap (member: member.readers) members;
       readers = lib.filter (reader: here reader.fact.scope) allReaders;
@@ -1022,7 +1040,7 @@ let
         let
           count = lib.length (entries reader.fact);
         in
-        single reader.fact && (count > 1 || count == 0 && reader.fact.holds.default == null)
+        single reader.fact && (count > 1 || count == 0 && reader.fact.default == null)
       ) null readers;
     in
     {
@@ -1072,7 +1090,7 @@ let
             if found == [ ] then
               "nothing in ${where} provides"
             else
-              "holds one value but is stated ${toString (lib.length found)} times in ${where} (by ${
+              "is a fact but is stated ${toString (lib.length found)} times in ${where} (by ${
                 lib.concatMapStringsSep ", " (entry: show entry.path) found
               })"
           }"
@@ -1106,7 +1124,7 @@ let
 
   /**
     Evaluate a tree, or a list of members. The caller stands at the root and
-    reads from it: `collect fact` returns what the fact holds.
+    reads from it: `collect fact` returns what its readers receive.
 
     The whole tree is checked before anything is returned: inputs,
     declarations, nesting, cycles, that everything used is provided and that
@@ -1161,7 +1179,7 @@ let
           slot:
           map (entry: {
             fact = { inherit (slot.fact) address name; };
-            single = slot.fact.holds.count == "one";
+            single = slot.fact.kind == "fact";
             from = entry.path;
             to = locate { path = [ ]; } top;
           }) slot.entries

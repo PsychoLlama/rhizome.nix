@@ -2,7 +2,6 @@
 
 let
   types = import ./types.nix { inherit lib; };
-  holds = import ./holds.nix { inherit lib; };
   address = import ./address.nix { inherit lib; };
   graph = import ./graph.nix { inherit lib address; };
   core = import ./core.nix {
@@ -10,7 +9,6 @@ let
       lib
       address
       types
-      holds
       ;
   };
 

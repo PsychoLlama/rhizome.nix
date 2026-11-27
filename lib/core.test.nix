@@ -2,9 +2,6 @@
 
 let
   t = rhizome.types;
-  # What a fact's definition receives. The tests pass records, so they need
-  # these in scope.
-  inherit (import ./holds.nix { inherit lib; }) one many as;
 
   # Tests make things one at a time. Each is a module of one.
   make =
@@ -13,6 +10,7 @@ let
 
   scope = make (define: define.scope);
   fact = make (define: define.fact);
+  collection = make (define: define.collection);
   unit = make (define: define.unit);
   bundle = make (define: define.group);
   instance = scope: make (_: scope.instance);
@@ -28,26 +26,22 @@ let
   prefix = fact "prefix" {
     scope = group;
     type = t.str;
-    holds = one;
     allow-unread = true;
   };
 
-  message = fact "message" {
+  message = collection "message" {
     scope = group;
     type = t.str;
-    holds = many as.list;
   };
 
-  reply = fact "reply" {
+  reply = collection "reply" {
     scope = group;
     type = t.str;
-    holds = many as.list;
   };
 
   # Reaches the root.
-  report = fact "report" {
+  report = collection "report" {
     type = t.list t.str;
-    holds = many as.list;
   };
 
   sender = unit "sender" {
@@ -119,9 +113,9 @@ in
 
   testMergeEntriesKeepsProvenance =
     let
-      audit = fact "audit" {
+      audit = collection "audit" {
         type = t.str;
-        holds = many as.entries;
+        combine = entries: entries;
       };
     in
     {
@@ -141,10 +135,9 @@ in
   # Facts are told apart by definition, not by name.
   testSameNameIsNotSameFact =
     let
-      other = fact "message" {
+      other = collection "message" {
         scope = group;
         type = t.str;
-        holds = many as.list;
       };
     in
     {
@@ -216,7 +209,7 @@ in
       ]
     );
 
-    expectedError = failure "sender: uses `prefix`, which holds one value but is stated 2 times in root > team.hi.";
+    expectedError = failure "sender: uses `prefix`, which is a fact but is stated 2 times in root > team.hi.";
   };
 
   testEmittingOutsideItsScopeFails = {
@@ -246,7 +239,6 @@ in
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        holds = one;
       };
     in
     {
@@ -352,7 +344,7 @@ in
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        holds = one.with-default "none";
+        default = "none";
       };
 
       reader = unit "reader" {
@@ -383,7 +375,7 @@ in
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        holds = one.with-default "none";
+        default = "none";
       };
     in
     {
@@ -395,12 +387,12 @@ in
         ]
       );
 
-      expectedError = failure "uses `motto`, which holds one value but is stated 2 times in root > team.hi.";
+      expectedError = failure "uses `motto`, which is a fact but is stated 2 times in root > team.hi.";
     };
 
   testMembersMustBeNodes = {
     expr = reports (team { prefix = "hi"; } [ message ]);
-    expectedError = failure "root > team.hi.: a member must be a unit, a group, an instance, or an emission, got a fact";
+    expectedError = failure "root > team.hi.: a member must be a unit, a group, an instance, or an emission, got a collection";
   };
 
   testScopesMustSayWhatTheyAreWithin = {
@@ -408,14 +400,20 @@ in
     expectedError = failure "scope `loose` must say what it is `within`";
   };
 
-  testFactsMustSayWhatTheyHold = {
-    expr = (fact "bare" { }).holds;
-    expectedError = failure "fact `bare` must say what it `holds`";
+  testDefinitionsAreRecords = {
+    expr = (fact "bare" (_: { })).id;
+    expectedError = failure "fact `bare` is a record, got a lambda";
   };
 
-  testHoldsIsOneOrMany = {
-    expr = (fact "bare" { holds = as.list; }).holds;
-    expectedError = failure "fact `bare`: `holds` is `one`, `one.with-default <value>` or `many <how>`";
+  # `combine` belongs to a collection, and `default` to a fact.
+  testFactsDoNotCombine = {
+    expr = (fact "bare" { combine = lib.length; }).id;
+    expectedError = failure "fact `bare`: unknown field `combine`";
+  };
+
+  testCollectionsHaveNoDefault = {
+    expr = (collection "bare" { default = [ ]; }).id;
+    expectedError = failure "collection `bare`: unknown field `default`";
   };
 
   # The type only checks. A default is a value like any other.
@@ -423,31 +421,36 @@ in
     expr =
       (fact "motto" {
         type = t.str;
-        holds = one.with-default 42;
-      }).holds.default.value;
+        default = 42;
+      }).default.value;
 
     expectedError = failure "fact `motto`: default: expected str, got a int";
   };
 
-  # A definition is given `one`, `many` and `as`, and says what it holds
-  # as data a tool can read.
-  testFactsReceiveWhatTheyCanHold = {
+  # A tool can tell the two apart, and see what a fact falls back to.
+  testFactsAndCollectionsAreData = {
     expr =
       let
-        facts = rhizome.module { } (
+        made = rhizome.module { } (
           define: _: {
-            name = define.fact ({ one, ... }: { holds = one; });
-            motto = define.fact ({ one, ... }: { holds = one.with-default "none"; });
-            tag = define.fact ({ many, as, ... }: { holds = many as.list; });
-            total = define.fact ({ many, ... }: { holds = many lib.length; });
+            name = define.fact { };
+            motto = define.fact { default = null; };
+            tag = define.collection { };
+            total = define.collection { combine = lib.length; };
           }
         );
       in
       [
-        { inherit (facts.name.holds) count default; }
-        { inherit (facts.motto.holds) count default; }
-        { inherit (facts.tag.holds) count; }
-        (facts.total.holds.as [
+        { inherit (made.name) kind default; }
+        { inherit (made.motto) kind default; }
+        made.tag.kind
+        (made.tag.combine [
+          {
+            from = "a";
+            value = 1;
+          }
+        ])
+        (made.total.combine [
           1
           2
         ])
@@ -455,27 +458,27 @@ in
 
     expected = [
       {
-        count = "one";
+        kind = "fact";
         default = null;
       }
       {
-        count = "one";
-        default.value = "none";
+        kind = "fact";
+        default.value = null;
       }
-      { count = "many"; }
+      "collection"
+      [ 1 ]
       2
     ];
   };
 
   testFactsRejectUnknownFields = {
     expr =
-      (fact "stale" {
+      (collection "stale" {
         type = t.str;
-        holds = many as.list;
         default = "x";
       }).id;
 
-    expectedError = failure "fact `stale`: unknown field `default`";
+    expectedError = failure "collection `stale`: unknown field `default`";
   };
 
   # Reading from the root is limited to what reaches it.
@@ -522,12 +525,12 @@ in
     expected = [ ];
   };
 
-  # A fact holding one value takes one statement.
-  testEachIsForFactsHoldingManyValues = {
+  # A fact takes one statement.
+  testEachIsForCollections = {
     expr = reports (
       team { prefix = "hi"; } [ (unit "eager" { provides = [ (prefix.each [ "a" ]) ]; }) ]
     );
-    expectedError = failure "eager: `prefix` holds one value, so it cannot be given `each`";
+    expectedError = failure "eager: `prefix` is a fact, which holds one value. `each` is for collections";
   };
 
   # `each` works on a bare emission too, and may be empty.
@@ -559,7 +562,7 @@ in
       ]
     );
 
-    expectedError = failure "fact `message`: expected str, got a int";
+    expectedError = failure "collection `message`: expected str, got a int";
   };
 
   testInstancesTakeInputThenMembers = {
@@ -627,10 +630,9 @@ in
   testInstancesGetTheirOwnFacts =
     let
       inbox = name: rec {
-        letter = fact "${name}.letter" {
+        letter = collection "${name}.letter" {
           scope = group;
           type = t.str;
-          holds = many as.list;
         };
 
         reader = unit name {
@@ -682,7 +684,7 @@ in
       (rhizome.eval { scopes = [ group ]; } (unit "numeric" { provides = [ (message 42) ]; })).collect
         message;
 
-    expectedError = failure "fact `message`: expected str, got a int";
+    expectedError = failure "collection `message`: expected str, got a int";
   };
 
   # Each team bounds `message`: the two do not see each other's.
@@ -750,7 +752,6 @@ in
           first = message.type;
           all = t.list message.type;
         };
-        holds = one;
       };
     in
     {
@@ -861,7 +862,7 @@ in
           (
             define: self: {
               floor = define.scope { within = rhizome.root; };
-              letter = define.fact { holds = many as.list; };
+              letter = define.collection { };
               writer = define.unit { provides = [ (self.letter "dear") ]; };
               unit = define.group { includes = [ self.writer ]; };
               office = self.floor.instance { };
@@ -916,9 +917,8 @@ in
         namespace:
         (rhizome.module { inherit namespace; } (
           define: _: {
-            letter = define.fact {
+            letter = define.collection {
               type = t.str;
-              holds = many as.list;
             };
           }
         )).letter;
@@ -942,9 +942,8 @@ in
     let
       mail = rhizome.module { } (
         define: _: rec {
-          letter = define.fact {
+          letter = define.collection {
             type = t.str;
-            holds = many as.list;
           };
 
           unit = define.unit { provides = [ (letter "dear") ]; };
@@ -953,7 +952,7 @@ in
     in
     {
       expr = (rhizome.eval { } mail.unit).collect mail.letter;
-      expectedError = failure "rhizome: root > unit: provides: this fact has no name .written at";
+      expectedError = failure "rhizome: root > unit: provides: this collection has no name .written at";
     };
 
   testUnnamedErrorsSayWhatToDo = {
@@ -970,29 +969,27 @@ in
     expr =
       (rhizome.eval { } (
         unit "reader" {
-          uses.letters = loose.fact { holds = many as.list; };
+          uses.letters = loose.collection { };
         }
       )).routes;
 
-    expectedError = failure "rhizome: root > reader: uses `letters`: this fact has no name";
+    expectedError = failure "rhizome: root > reader: uses `letters`: this collection has no name";
   };
 
   testUnnamedScopesFail = {
     expr =
-      (fact "lost" {
+      (collection "lost" {
         scope = loose.scope { within = rhizome.root; };
-        holds = many as.list;
       }).scope;
 
-    expectedError = failure "rhizome: fact `lost`: `scope`: this scope has no name";
+    expectedError = failure "rhizome: collection `lost`: `scope`: this scope has no name";
   };
 
   # Reading a fact's type needs no name, so `rec` is harmless there.
   testUnnamedFactsStillHaveATypes = {
     expr =
-      (loose.fact {
+      (loose.collection {
         type = t.str;
-        holds = many as.list;
       }).type.name;
 
     expected = "str";
@@ -1139,7 +1136,7 @@ in
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
     expr = (rhizome.eval { } (rhizome.load ../tests/fixtures/broken/shapes { }).recursive.unit).routes;
-    expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:7";
+    expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:5";
   };
 
   testLoadRejectsLooseValues = {
