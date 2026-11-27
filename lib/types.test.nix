@@ -12,6 +12,33 @@ let
 in
 
 {
+  # A path is anything that names a file or directory.
+  testPaths = {
+    expr = [
+      (check t.path ./types.nix)
+      (check t.path "/etc/hosts")
+      (check t.path {
+        type = "derivation";
+        outPath = "/nix/store/x";
+      })
+      (check t.path "relative/file")
+      (check t.path { })
+    ];
+
+    expected = [
+      true
+      true
+      true
+      false
+      false
+    ];
+  };
+
+  testPathsSayWhatTheyGot = {
+    expr = t.validate "here" t.path 3;
+    expectedError = failure "here: expected path, got a int";
+  };
+
   testPrimitives = {
     expr = [
       (check t.str "a")

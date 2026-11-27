@@ -55,6 +55,21 @@ rec {
   function = mk "function" lib.isFunction;
 
   /**
+    Where a file or directory is: a Nix path, a derivation, or a string
+    holding an absolute path, such as `"${package}/share/thing"`. Nothing
+    is checked on disk.
+
+    # Type
+
+    ```
+    path :: Type
+    ```
+  */
+  path = mk "path" (
+    value: lib.isPath value || lib.isDerivation value || (lib.isString value && lib.hasPrefix "/" value)
+  );
+
+  /**
     A value of one type or the other.
 
     # Type
