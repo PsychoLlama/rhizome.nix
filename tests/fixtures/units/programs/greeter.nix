@@ -1,10 +1,16 @@
 {
-  rhizome,
   units,
+  self,
+  module,
   greeting,
   ...
 }:
 
-rhizome.unit "greeter" {
-  unit = rhizome.component [ (units.platform.said greeting) ];
+{
+  hello = module.component "hello" { config = [ (units.platform.said greeting) ]; };
+
+  # A file reaches its own definitions through `self`.
+  unit = module.group "unit" { config = [ self.hello ]; };
+
+  lib.shout = text: "${text}!";
 }

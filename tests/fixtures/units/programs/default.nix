@@ -1,1 +1,1 @@
-_: { shared = "beside the files"; }
+_: { values.shared = "beside the files"; }
