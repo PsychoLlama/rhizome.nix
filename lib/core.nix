@@ -324,23 +324,26 @@ let
   ];
 
   /**
-    The outermost scope: whoever evaluates the tree.
+    Where a fact or collection with no `scope` lives: the whole evaluation.
+    Whoever evaluates the tree reads from here.
   */
   root = {
     kind = "scope";
     address = locally "root";
     name = "root";
     id = "root";
-    ancestors = [ ];
   };
 
   /**
     A kind of place in the tree, such as a datacenter, a host, or a user.
 
-        scope = define.scope { within = host.scope; };
+        scope = define.scope { };
 
-    `within` names the scope it belongs inside. The outermost scopes are
-    within `rhizome.root`.
+    A scope declares nothing. It is something for facts and collections to
+    be scoped to, and for instances to be instances of. What sits inside
+    what is decided by the tree: a user is inside a host because a user's
+    instance is among a host's members, not because either scope says so.
+    So a scope's units can be used wherever their facts are provided.
 
     An instance is one instance of a scope, and is made from it:
 
@@ -361,25 +364,22 @@ let
     # Type
 
     ```
-    nameScope :: Address -> { within :: Scope } -> Scope
+    nameScope :: Address -> { } -> Scope
     ```
   */
   nameScope =
     address: definition:
     let
       name = display address;
-      within = named "rhizome: scope `${name}`: `within`" (
-        definition.within
-          or (throw "rhizome: scope `${name}` must say what it is `within`; the outermost is `rhizome.root`")
-      );
     in
-    lib.fix (self: {
-      kind = "scope";
-      inherit address name within;
-      id = identify address "within" definition;
-      ancestors = [ within ] ++ within.ancestors;
-      instance = instanceOf self;
-    });
+    lib.seq (known "scope `${name}`" [ ] definition) (
+      lib.fix (self: {
+        kind = "scope";
+        inherit address name;
+        id = identify address "scope" definition;
+        instance = instanceOf self;
+      })
+    );
 
   /**
     One value that units state and other units read, without either naming
@@ -1038,11 +1038,6 @@ let
       readers = lib.filter (reader: here reader.fact.scope) allReaders;
       isRead = lib.listToAttrs (map (reader: lib.nameValuePair reader.fact.id true) readers);
 
-      # A scope cannot start inside a scope that belongs inside it.
-      inverted = lib.findFirst (
-        outer: lib.any (scope: has scope outer.ancestors) scopes
-      ) null context.scopes;
-
       # Values written for nobody are an error, unless the fact says they
       # may go unread. Whoever evaluates the tree reads from the root, so
       # nothing there is unread.
@@ -1092,10 +1087,6 @@ let
             "label"
           ] declared
         )
-        && (
-          inverted == null
-          || throw "rhizome: ${where}: starts a scope inside `${inverted.name}`, which belongs inside it"
-        )
         && lib.all (member: member.check) members
         && (
           unread == null
@@ -1143,7 +1134,7 @@ let
       }";
 
   /**
-    Evaluate a tree, or a list of members. The caller stands at the root and
+    Evaluate a tree, or a list of members. The caller stands at the top and
     reads from it: `collect fact` returns what its readers receive.
 
     The whole tree is checked before anything is returned: inputs,
@@ -1151,23 +1142,26 @@ let
     everything emitted is used. Payloads stay lazy, so a host that is never
     built costs only its structure.
 
-    `scopes` lets the caller stand in for the instances a member would normally
-    sit inside, to run it on its own.
+    - `name` is what the top is called in trails and graphs: `root` unless
+      given. A project evaluating its own tree would give its own name.
+    - `scopes` lets the caller stand in for the instances a member would
+      normally sit inside, to run it on its own.
 
     # Type
 
     ```
-    eval :: { scopes? :: [Scope] } -> Node | [Node] -> { collect :: Fact -> Any, routes :: [Route] }
+    eval :: { name? :: String, scopes? :: [Scope] } -> Node | [Node] -> { collect :: Fact -> Any, routes :: [Route] }
     ```
   */
   eval =
     {
+      name ? "root",
       scopes ? [ ],
     }:
     tree:
     let
       reachable = [ root ] ++ scopes;
-      top = nameInstance (locally "root") reachable { } { } (lib.toList tree);
+      top = nameInstance (locally name) reachable { } { } (lib.toList tree);
 
       result = evaluateInstance {
         path = [ ];
@@ -1181,7 +1175,7 @@ let
       collect =
         fact:
         if !has (named "rhizome: `collect`" fact).scope reachable then
-          throw "rhizome: `${fact.name}` is bounded by `${fact.scope.name}` and never reaches the root"
+          throw "rhizome: `${fact.name}` is scoped to `${fact.scope.name}` and never reaches the top"
         else
           result.read fact;
 
@@ -1212,6 +1206,5 @@ in
     eval
     ignore
     module
-    root
     ;
 }

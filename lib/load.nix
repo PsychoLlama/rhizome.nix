@@ -8,11 +8,14 @@
 
   Every file is a function, called with the arguments given here plus:
 
-  - `rhizome`: the library.
+  - `types`: `rhizome.types`, for typing input, facts and collections.
   - `units`: the whole tree, so any unit can reach any other.
   - `self`: what this file returns, with its definitions named.
-  - `define`: the builders: `define.scope`, `define.fact`, `define.unit`
-    and `define.group`.
+  - `define`: the builders: `define.scope`, `define.fact`,
+    `define.collection`, `define.unit` and `define.group`.
+
+  The library itself is not passed. A file that needs it, to evaluate a
+  tree of its own, can be given it with the other arguments.
 
   A file returns an attrset. Each attribute is a definition, and takes its
   name from the attribute and the file's path: `topic` in
@@ -77,8 +80,8 @@ let
           import path (
             args
             // {
+              inherit (rhizome) types;
               inherit
-                rhizome
                 units
                 self
                 define

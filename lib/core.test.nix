@@ -18,9 +18,9 @@ let
   # Builders taken out of their module, to make what nothing will name.
   loose = (rhizome.module { } (define: _: { lib = define; })).lib;
 
-  group = scope "group" { within = rhizome.root; };
+  group = scope "group" { };
 
-  seat = scope "seat" { within = group; };
+  seat = scope "seat" { };
 
   # A single value, written by the instance. Nobody has to read it.
   prefix = fact "prefix" {
@@ -395,9 +395,10 @@ in
     expectedError = failure "root > team.hi.: a member must be a unit, a group, an instance, or an emission, got a collection";
   };
 
-  testScopesMustSayWhatTheyAreWithin = {
-    expr = (scope "loose" { }).ancestors;
-    expectedError = failure "scope `loose` must say what it is `within`";
+  # A scope declares nothing. What sits inside what is the tree's business.
+  testScopesDeclareNothing = {
+    expr = (scope "loose" { within = group; }).id;
+    expectedError = failure "scope `loose`: unknown field `within`";
   };
 
   testDefinitionsAreRecords = {
@@ -482,7 +483,7 @@ in
   };
 
   # Reading from the root is limited to what reaches it.
-  testCollectingABoundedFactFromTheRootFails = {
+  testCollectingAScopedFactFromTheTopFails = {
     expr =
       (rhizome.eval { } (
         team { prefix = "hi"; } [
@@ -492,7 +493,7 @@ in
       )).collect
         message;
 
-    expectedError = failure "`message` is bounded by `group` and never reaches the root";
+    expectedError = failure "`message` is scoped to `group` and never reaches the top";
   };
 
   # A cycle is reported with the unit behind each edge.
@@ -690,7 +691,7 @@ in
   # Each team bounds `message`: the two do not see each other's.
   testScopesBoundFacts = {
     expr = reports (
-      instance (scope "company" { within = rhizome.root; }) "company" { } { } [
+      instance (scope "company" { }) "company" { } { } [
         (team { prefix = "hello"; } [
           sender
           receiver
@@ -724,10 +725,23 @@ in
     expected = [ [ "hey!" ] ];
   };
 
-  # `within` orders scopes: a group cannot start inside a seat.
-  testScopesCannotNestInsideOut = {
-    expr = reports (instance seat "desk" { } { } [ (team { prefix = "hi"; } [ ]) ]);
-    expectedError = failure "team.hi.: starts a scope inside `seat`, which belongs inside it";
+  # Nesting is the tree's: a team can sit at a desk as well as hold one.
+  testScopesNestHoweverTheTreeSays = {
+    expr = reports (
+      instance seat "desk" { } { } [
+        (team { prefix = "hi"; } [
+          sender
+          receiver
+        ])
+      ]
+    );
+    expected = [ [ "hi!" ] ];
+  };
+
+  # Whoever evaluates names the top, for trails and graphs.
+  testTheTopCanBeNamed = {
+    expr = (rhizome.eval { name = "office"; } [ receiver ]).routes;
+    expectedError = failure "office > receiver: uses `message` outside a `group` instance";
   };
 
   # A second instance for the same scope: a stand-in for `team` that needs
@@ -861,7 +875,7 @@ in
           }
           (
             define: self: {
-              floor = define.scope { within = rhizome.root; };
+              floor = define.scope { };
               letter = define.collection { };
               writer = define.unit { provides = [ (self.letter "dear") ]; };
               unit = define.group { includes = [ self.writer ]; };
@@ -979,7 +993,7 @@ in
   testUnnamedScopesFail = {
     expr =
       (collection "lost" {
-        scope = loose.scope { within = rhizome.root; };
+        scope = loose.scope { };
       }).scope;
 
     expectedError = failure "rhizome: collection `lost`: `scope`: this scope has no name";
@@ -1118,19 +1132,19 @@ in
 
   # A file returns an attrset, never a definition.
   testLoadRejectsBareDefinitions = {
-    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).bare;
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { inherit rhizome; }).bare;
     expectedError = failure "bare.nix must return an attrset of definitions";
   };
 
   # An attribute names what its own file defines, and nothing else.
   testLoadRejectsDefinitionsFromAnotherModule = {
-    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).borrowed.unit;
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { inherit rhizome; }).borrowed.unit;
     expectedError = failure "`borrowed.unit` holds the unit `elsewhere.unit`, which another module named";
   };
 
   # Builders belong to the module that handed them out.
   testLoadRejectsAnotherModulesBuilders = {
-    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).smuggled.unit;
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { inherit rhizome; }).smuggled.unit;
     expectedError = failure "`smuggled.unit` holds a unit made with another module's builders";
   };
 
@@ -1140,7 +1154,7 @@ in
     let
       platform = rhizome.module { path = [ "platform" ]; } (
         define: self: {
-          scope = define.scope { within = rhizome.root; };
+          scope = define.scope { };
           name = define.fact { scope = self.scope; };
           said = define.collection { };
 
@@ -1178,12 +1192,15 @@ in
     };
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
-    expr = (rhizome.eval { } (rhizome.load ../tests/fixtures/broken/shapes { }).recursive.unit).routes;
+    expr =
+      (rhizome.eval { }
+        (rhizome.load ../tests/fixtures/broken/shapes { inherit rhizome; }).recursive.unit
+      ).routes;
     expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:5";
   };
 
   testLoadRejectsLooseValues = {
-    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).loose.port;
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { inherit rhizome; }).loose.port;
     expectedError = failure "`loose.port` is not a definition. Functions belong in `lib` and constants in `values`";
   };
 

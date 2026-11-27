@@ -1,7 +1,7 @@
-{ rhizome, define, ... }:
+{ types, define, ... }:
 
 {
   said = define.collection {
-    type = rhizome.types.str;
+    type = types.str;
   };
 }

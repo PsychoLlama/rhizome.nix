@@ -1,8 +1,8 @@
-{ rhizome, define, ... }:
+{ types, define, ... }:
 
 rec {
   letter = define.collection {
-    type = rhizome.types.str;
+    type = types.str;
   };
 
   unit = define.unit { provides = [ (letter "dear") ]; };
