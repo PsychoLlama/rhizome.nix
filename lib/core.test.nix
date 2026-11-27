@@ -9,35 +9,35 @@ let
     builder: name: definition:
     (rhizome.module { } (define: _: { ${name} = builder define definition; })).${name};
 
-  level = make (define: define.level);
+  scope = make (define: define.scope);
   fact = make (define: define.fact);
   unit = make (define: define.unit);
   bundle = make (define: define.group);
-  instance = level: make (_: level.instance);
+  instance = scope: make (_: scope.instance);
 
   # Builders taken out of their module, to make what nothing will name.
   loose = (rhizome.module { } (define: _: { lib = define; })).lib;
 
-  group = level "group" { within = rhizome.root; };
+  group = scope "group" { within = rhizome.root; };
 
-  seat = level "seat" { within = group; };
+  seat = scope "seat" { within = group; };
 
   # A single value, written by the instance. Nobody has to read it.
   prefix = fact "prefix" {
-    level = group;
+    scope = group;
     type = t.str;
     merge = merge.one;
     optional = true;
   };
 
   message = fact "message" {
-    level = group;
+    scope = group;
     type = t.str;
     merge = merge.list;
   };
 
   reply = fact "reply" {
-    level = group;
+    scope = group;
     type = t.str;
     merge = merge.list;
   };
@@ -50,25 +50,25 @@ let
 
   sender = unit "sender" {
     uses = { inherit prefix; };
-    config = { prefix }: [ (message "${prefix}!") ];
+    provides = { prefix }: [ (message "${prefix}!") ];
   };
 
   # Says the same thing as `sender`, and is a different unit.
   echo = unit "echo" {
     uses = { inherit prefix; };
-    config = { prefix }: [ (message "${prefix}!") ];
+    provides = { prefix }: [ (message "${prefix}!") ];
   };
 
   receiver = unit "receiver" {
     uses.messages = message;
-    config = { messages }: [ (report messages) ];
+    provides = { messages }: [ (report messages) ];
   };
 
   # An instance that starts a `group` and writes its prefix.
-  team = instance group "team" (cfg: {
-    input.prefix = t.str;
-    label = cfg.prefix;
-    config = [ (prefix cfg.prefix) ];
+  team = instance group "team" (input: {
+    type.prefix = t.str;
+    label = input.prefix;
+    includes = [ (prefix input.prefix) ];
   });
 
   reports = tree: (rhizome.eval { } tree).collect report;
@@ -94,7 +94,7 @@ in
   # The caller can stand in for an instance, to run one unit on its own.
   testUnitRunsAlone = {
     expr =
-      (rhizome.eval { levels = [ group ]; } [
+      (rhizome.eval { scopes = [ group ]; } [
         (prefix "yo")
         sender
       ]).collect
@@ -124,7 +124,7 @@ in
     in
     {
       expr =
-        (rhizome.eval { } (team { prefix = "hi"; } [ (unit "auditor" { config = [ (audit "seen") ]; }) ]))
+        (rhizome.eval { } (team { prefix = "hi"; } [ (unit "auditor" { provides = [ (audit "seen") ]; }) ]))
         .collect
           audit;
 
@@ -140,7 +140,7 @@ in
   testSameNameIsNotSameFact =
     let
       other = fact "message" {
-        level = group;
+        scope = group;
         type = t.str;
         merge = merge.list;
       };
@@ -152,7 +152,7 @@ in
           receiver
           (unit "elsewhere" {
             uses.messages = other;
-            config = { messages }: [ (report messages) ];
+            provides = { messages }: [ (report messages) ];
           })
         ]
       );
@@ -172,8 +172,7 @@ in
         echo
         (unit "splitter" {
           uses.messages = message;
-          emits = [ report ];
-          config = { messages }: map (text: report [ text ]) messages;
+          provides = { messages }: [ (report.each (map (text: [ text ]) messages)) ];
         })
       ]
     );
@@ -193,16 +192,16 @@ in
         sender
         (unit "splitter" {
           uses.messages = message;
-          config = { messages }: map (text: report [ text ]) messages;
+          provides = { messages }: map (text: report [ text ]) messages;
         })
       ]
     );
 
-    expectedError = failure "splitter: what it emits depends on what it uses, so it must declare `emits`";
+    expectedError = failure "splitter: which facts it provides depends on what it uses";
   };
 
   testMissingProviderFails = {
-    expr = (rhizome.eval { levels = [ group ]; } sender).routes;
+    expr = (rhizome.eval { scopes = [ group ]; } sender).routes;
     expectedError = failure "root > sender: uses `prefix`, which nothing in root provides";
   };
 
@@ -218,19 +217,19 @@ in
     expectedError = failure "sender: uses `prefix`, which has 2 values in root > team.hi.";
   };
 
-  testEmittingOutsideItsLevelFails = {
-    expr = (rhizome.eval { } (unit "loud" { config = [ (message "hi") ]; })).routes;
-    expectedError = failure "root > loud: emits `message` outside a `group` instance";
+  testEmittingOutsideItsScopeFails = {
+    expr = (rhizome.eval { } (unit "loud" { provides = [ (message "hi") ]; })).routes;
+    expectedError = failure "root > loud: provides `message` outside a `group` instance";
   };
 
-  testUsingOutsideItsLevelFails = {
+  testUsingOutsideItsScopeFails = {
     expr = (rhizome.eval { } receiver).routes;
     expectedError = failure "root > receiver: uses `message` outside a `group` instance";
   };
 
   testUnreadEmissionFails = {
     expr = reports (team { prefix = "hi"; } [ sender ]);
-    expectedError = failure "sender: emits `message`, which nothing in root > team.hi. uses";
+    expectedError = failure "sender: provides `message`, which nothing in root > team.hi. uses";
   };
 
   # An optional fact is an offer: nobody has to read it.
@@ -243,14 +242,14 @@ in
   testSingleValuesMustBeReadUnlessOptional =
     let
       motto = fact "motto" {
-        level = group;
+        scope = group;
         type = t.str;
         merge = merge.one;
       };
     in
     {
       expr = reports (team { prefix = "hi"; } [ (motto "onward") ]);
-      expectedError = failure "team.hi.: emits `motto`, which nothing in root > team.hi. uses";
+      expectedError = failure "team.hi.: provides `motto`, which nothing in root > team.hi. uses";
     };
 
   # Two lists naming one unit include it once.
@@ -276,9 +275,9 @@ in
   # Given input, it is the same member when the input is equal too.
   testInstancesDifferByInput =
     let
-      shout = unit "shout" (cfg: {
-        input.text = t.str;
-        config = [ (message cfg.text) ];
+      shout = unit "shout" (input: {
+        type.text = t.str;
+        provides = [ (message input.text) ];
       });
     in
     {
@@ -324,7 +323,7 @@ in
     expr = reports (
       team { prefix = "hi"; } [
         (unit "chatty" {
-          config = [
+          provides = [
             (message "one")
             [
               (message "two")
@@ -349,14 +348,14 @@ in
   testOneOrNoneIsNullWhenAbsent =
     let
       motto = fact "motto" {
-        level = group;
+        scope = group;
         type = t.str;
         merge = merge.one-or-none;
       };
 
       reader = unit "reader" {
         uses = { inherit motto; };
-        config = { motto }: [ (report [ (if motto == null then "none" else motto) ]) ];
+        provides = { motto }: [ (report [ (if motto == null then "none" else motto) ]) ];
       };
     in
     {
@@ -380,7 +379,7 @@ in
   testOneOrNoneRejectsTwoWriters =
     let
       motto = fact "motto" {
-        level = group;
+        scope = group;
         type = t.str;
         merge = merge.one-or-none;
       };
@@ -402,9 +401,9 @@ in
     expectedError = failure "root > team.hi.: a member must be a unit, a group, an instance, or an emission, got a fact";
   };
 
-  testLevelsMustSayWhatTheyAreWithin = {
-    expr = (level "loose" { }).ancestors;
-    expectedError = failure "level `loose` must say what it is `within`";
+  testScopesMustSayWhatTheyAreWithin = {
+    expr = (scope "loose" { }).ancestors;
+    expectedError = failure "scope `loose` must say what it is `within`";
   };
 
   testFactsMustNameAMerge = {
@@ -443,11 +442,11 @@ in
       team { prefix = "hi"; } [
         (unit "a" {
           uses.messages = message;
-          config = [ (reply "a") ];
+          provides = [ (reply "a") ];
         })
         (unit "b" {
           uses.replies = reply;
-          config = [ (message "b") ];
+          provides = [ (message "b") ];
         })
       ]
     );
@@ -467,29 +466,61 @@ in
     expected = [ ];
   };
 
-  testUndeclaredEmissionFails = {
+  # A fact holding one value takes one statement.
+  testEachIsForFactsHoldingManyValues = {
+    expr = reports (
+      team { prefix = "hi"; } [ (unit "eager" { provides = [ (prefix.each [ "a" ]) ]; }) ]
+    );
+    expectedError = failure "eager: `prefix` holds a single value, so it cannot be given `each`";
+  };
+
+  # `each` works on a bare emission too, and may be empty.
+  testEachCanBeAMember = {
     expr = reports (
       team { prefix = "hi"; } [
-        (unit "undeclared" {
-          emits = [ ];
-          config = [ (report [ ]) ];
-        })
+        (message.each [
+          "one"
+          "two"
+        ])
+        (message.each [ ])
+        receiver
       ]
     );
 
-    expectedError = failure "undeclared: emits `report` without declaring it in `emits`";
+    expected = [
+      [
+        "one"
+        "two"
+      ]
+    ];
+  };
+
+  testEachValueIsTypeChecked = {
+    expr = reports (
+      team { prefix = "hi"; } [
+        (message.each [ 42 ])
+        receiver
+      ]
+    );
+
+    expectedError = failure "fact `message`: expected str, got a int";
+  };
+
+  testInstancesTakeInputThenMembers = {
+    expr = reports (team [ sender ] [ ]);
+    expectedError = failure "`team` takes its input, then its members";
   };
 
   testConfigCanOnlyAskForWhatIsUsed = {
     expr = reports (
       team { prefix = "hi"; } [
         (unit "greedy" {
-          config = { prefix }: [ ];
+          provides = { prefix }: [ ];
         })
       ]
     );
 
-    expectedError = failure "greedy: `config` asks for `prefix`, which is not in `uses`";
+    expectedError = failure "greedy: `provides` asks for `prefix`, which is not in `uses`";
   };
 
   testUnknownFieldsFail = {
@@ -512,12 +543,12 @@ in
   # A field with a default may be left out.
   testInputFieldsCanHaveDefaults =
     let
-      greeter = unit "greeter" (cfg: {
-        input = {
+      greeter = unit "greeter" (input: {
+        type = {
           name = t.str;
           greeting = t.default t.str "hello";
         };
-        config = [ (report [ "${cfg.greeting} ${cfg.name}" ]) ];
+        provides = [ (report [ "${input.greeting} ${input.name}" ]) ];
       });
     in
     {
@@ -541,14 +572,14 @@ in
     let
       inbox = name: rec {
         letter = fact "${name}.letter" {
-          level = group;
+          scope = group;
           type = t.str;
           merge = merge.list;
         };
 
         reader = unit name {
           uses.letters = letter;
-          config = { letters }: [ (report letters) ];
+          provides = { letters }: [ (report letters) ];
         };
       };
 
@@ -575,13 +606,13 @@ in
       ];
     };
 
-  # A declaration must not depend on cfg.
+  # A declaration must not depend on input.
   testDeclarationsCannotUseInput = {
     expr = reports (
       team { prefix = "hi"; } [
-        (unit "dynamic" (cfg: {
-          input.loud = t.bool;
-          uses = if cfg.loud then { messages = message; } else { };
+        (unit "dynamic" (input: {
+          type.loud = t.bool;
+          uses = if input.loud then { messages = message; } else { };
         }) { loud = true; })
       ]
     );
@@ -592,16 +623,16 @@ in
   # Payloads are the one thing left lazy: checked when used.
   testEmissionPayloadIsTypeChecked = {
     expr =
-      (rhizome.eval { levels = [ group ]; } (unit "numeric" { config = [ (message 42) ]; })).collect
+      (rhizome.eval { scopes = [ group ]; } (unit "numeric" { provides = [ (message 42) ]; })).collect
         message;
 
     expectedError = failure "fact `message`: expected str, got a int";
   };
 
   # Each team bounds `message`: the two do not see each other's.
-  testLevelsBoundFacts = {
+  testScopesBoundFacts = {
     expr = reports (
-      instance (level "company" { within = rhizome.root; }) "company" { } [
+      instance (scope "company" { within = rhizome.root; }) "company" { } { } [
         (team { prefix = "hello"; } [
           sender
           receiver
@@ -623,11 +654,11 @@ in
     ];
   };
 
-  # An instance that does not start the fact's level is transparent to it.
+  # An instance that does not start the fact's scope is transparent to it.
   testFactsPassThroughOtherInstances = {
     expr = reports (
       team { prefix = "hey"; } [
-        (instance seat "subteam" { } [ sender ])
+        (instance seat "subteam" { } { } [ sender ])
         receiver
       ]
     );
@@ -635,17 +666,17 @@ in
     expected = [ [ "hey!" ] ];
   };
 
-  # `within` orders levels: a group cannot start inside a seat.
-  testLevelsCannotNestInsideOut = {
-    expr = reports (instance seat "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
-    expectedError = failure "team.hi.: starts a level inside `seat`, which belongs inside it";
+  # `within` orders scopes: a group cannot start inside a seat.
+  testScopesCannotNestInsideOut = {
+    expr = reports (instance seat "desk" { } { } [ (team { prefix = "hi"; } [ ]) ]);
+    expectedError = failure "team.hi.: starts a scope inside `seat`, which belongs inside it";
   };
 
-  # A second instance for the same level: a stand-in for `team` that needs
+  # A second instance for the same scope: a stand-in for `team` that needs
   # no input.
-  testSeveralInstancesCanImplementALevel = {
+  testSeveralInstancesCanImplementAScope = {
     expr = reports (
-      instance group "double" { config = [ (prefix "test") ]; } [
+      instance group "double" { includes = [ (prefix "test") ]; } { } [
         sender
         receiver
       ]
@@ -683,11 +714,11 @@ in
       team { prefix = "hi"; } [
         (unit "a" {
           uses.messages = message;
-          config = [ (reply "a") ];
+          provides = [ (reply "a") ];
         })
         (unit "b" {
           uses.replies = reply;
-          config = [ (message "b") ];
+          provides = [ (message "b") ];
         })
       ]
     );
@@ -773,10 +804,10 @@ in
           }
           (
             define: self: {
-              floor = define.level { within = rhizome.root; };
+              floor = define.scope { within = rhizome.root; };
               letter = define.fact { merge = merge.list; };
-              writer = define.unit { config = [ (self.letter "dear") ]; };
-              unit = define.group { config = [ self.writer ]; };
+              writer = define.unit { provides = [ (self.letter "dear") ]; };
+              unit = define.group { includes = [ self.writer ]; };
               office = self.floor.instance { };
 
               lib.stamp = 1;
@@ -860,13 +891,13 @@ in
             merge = merge.list;
           };
 
-          unit = define.unit { config = [ (letter "dear") ]; };
+          unit = define.unit { provides = [ (letter "dear") ]; };
         }
       );
     in
     {
       expr = (rhizome.eval { } mail.unit).collect mail.letter;
-      expectedError = failure "rhizome: root > unit: emits: this fact has no name .written at";
+      expectedError = failure "rhizome: root > unit: provides: this fact has no name .written at";
     };
 
   testUnnamedErrorsSayWhatToDo = {
@@ -890,14 +921,14 @@ in
     expectedError = failure "rhizome: root > reader: uses `letters`: this fact has no name";
   };
 
-  testUnnamedLevelsFail = {
+  testUnnamedScopesFail = {
     expr =
       (fact "lost" {
-        level = loose.level { within = rhizome.root; };
+        scope = loose.scope { within = rhizome.root; };
         merge = merge.list;
-      }).level;
+      }).scope;
 
-    expectedError = failure "rhizome: fact `lost`: `level`: this level has no name";
+    expectedError = failure "rhizome: fact `lost`: `scope`: this scope has no name";
   };
 
   # Reading a fact's type needs no name, so `rec` is harmless there.
@@ -919,15 +950,15 @@ in
   # A group passes typed input on to its members.
   testGroupsHoldMembers =
     let
-      shout = unit "shout" (cfg: {
-        input.text = t.str;
-        config = [ (message cfg.text) ];
+      shout = unit "shout" (input: {
+        type.text = t.str;
+        provides = [ (message input.text) ];
       });
 
-      pair = bundle "pair" (cfg: {
-        input.text = t.str;
-        config = [
-          (shout cfg)
+      pair = bundle "pair" (input: {
+        type.text = t.str;
+        includes = [
+          (shout input)
           receiver
         ];
       });
@@ -941,10 +972,10 @@ in
   # trace in the path.
   testGroupsShareMembers =
     let
-      morning = bundle "morning" { config = [ sender ]; };
+      morning = bundle "morning" { includes = [ sender ]; };
 
       evening = bundle "evening" {
-        config = [
+        includes = [
           sender
           receiver
         ];
@@ -970,7 +1001,7 @@ in
   testGroupInputIsTypeChecked = {
     expr = reports (
       team { prefix = "hi"; } [
-        (bundle "strict" { input.text = t.str; } { text = 1; })
+        (bundle "strict" { type.text = t.str; } { text = 1; })
       ]
     );
 

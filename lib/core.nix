@@ -52,7 +52,7 @@ let
   apply = definition: input: if lib.isFunction definition then definition input else definition;
 
   /**
-    What a definition declares: its types, levels, and what it uses.
+    What a definition declares: its types, scopes, and what it uses.
 
     Declarations are read by calling the definition with an input that throws
     when used, so a declaration can never depend on input.
@@ -88,7 +88,9 @@ let
     if lib.isAttrs value then
       value
     else
-      throw "rhizome: ${where}: a ${what} is a record, got a ${builtins.typeOf value}. Its members go in `config`";
+      throw "rhizome: ${where}: a ${what} is a record, got a ${builtins.typeOf value}. ${
+        if what == "unit" then "What it provides goes in `provides`" else "Its members go in `includes`"
+      }";
 
   /**
     Reject misspelled or leftover fields instead of ignoring them.
@@ -113,12 +115,12 @@ let
     A definition that has no name yet. A module's builder returns one, and
     the module names it after the attribute it is exported under. `origin`
     is the module whose builder made it, or null for an instance, which is made
-    from a level.
+    from a scope.
 
     Until then it can be passed around but not used. Reaching one through
     `rec` or a `let`, where a file should go through `self`, is the usual
     way to end up holding one. Using it never throws by itself, because a
-    throw would be swallowed while a unit is probed for what it emits.
+    throw would be swallowed while a unit is probed for what it provides.
     Each place a definition lands checks with `named`, and says so there.
 
     # Type
@@ -137,6 +139,13 @@ let
         inherit origin what build;
         source = written definition;
 
+        each = value: {
+          __emission = self.id;
+          fact = self;
+          each = true;
+          inherit value;
+        };
+
         __functor =
           _: value:
           if what == "fact" then
@@ -148,7 +157,7 @@ let
           else
             self;
       }
-      // lib.optionalAttrs (what == "level") {
+      // lib.optionalAttrs (what == "scope") {
         instance = instanceOf self;
       }
       // lib.optionalAttrs (what == "fact") {
@@ -209,10 +218,10 @@ let
 
         dns = rhizome.module { path = [ "services" "dns" ]; } (define: self: {
           record = define.fact { … };                            # services.dns.record
-          unit = define.unit { config = [ (self.record "…") ]; };
+          unit = define.unit { provides = [ (self.record "…") ]; };
         });
 
-    - `define`: the builders `level`, `fact`, `unit` and `group`.
+    - `define`: the builders `scope`, `fact`, `unit` and `group`.
       There are no others, so nothing is defined outside a module.
     - `self`: what the module exports, named.
 
@@ -244,7 +253,7 @@ let
         pending origin what definition (address: build address definition);
 
       builders = {
-        level = builder "level" nameLevel;
+        scope = builder "scope" nameScope;
         fact = builder "fact" nameFact;
         unit = builder "unit" nameUnit;
         group = builder "group" nameGroup;
@@ -274,17 +283,17 @@ let
     self;
 
   /**
-    A level's `instance`: a builder for one instance of it.
+    A scope's `instance`: a builder for one instance of it.
 
     # Type
 
     ```
-    instanceOf :: Level -> Definition -> Pending
+    instanceOf :: Scope -> Definition -> Pending
     ```
   */
   instanceOf =
-    level: definition:
-    pending null "instance" definition (address: nameInstance address [ level ] definition);
+    scope: definition:
+    pending null "instance" definition (address: nameInstance address [ scope ] definition);
 
   /**
     Attributes of a module that are not definitions.
@@ -301,15 +310,15 @@ let
     "fact"
     "unit"
     "group"
-    "level"
+    "scope"
     "instance"
   ];
 
   /**
-    The outermost level: whoever evaluates the tree.
+    The outermost scope: whoever evaluates the tree.
   */
   root = {
-    kind = "level";
+    kind = "scope";
     address = locally "root";
     name = "root";
     id = "root";
@@ -319,44 +328,44 @@ let
   /**
     A kind of place in the tree, such as a datacenter, a host, or a user.
 
-        level = define.level { within = host.level; };
+        scope = define.scope { within = host.scope; };
 
-    `within` names the level it belongs inside. The outermost levels are
+    `within` names the scope it belongs inside. The outermost scopes are
     within `rhizome.root`.
 
-    An instance is one instance of a level, and is made from it:
+    An instance is one instance of a scope, and is made from it:
 
-        instance = user.level.instance (cfg: {
-          input.name = t.str;
-          label = cfg.name;
-          config = [ (user.name cfg.name) ];
+        instance = user.scope.instance (input: {
+          type.name = t.str;
+          label = input.name;
+          includes = [ (user.name input.name) ];
         });
 
-    - `config`: members of its own, alongside the ones it is given.
-    - `input`, `label`: as for a unit.
+    - `includes`: members of its own, alongside the ones it is given.
+    - `type`, `label`: as for a unit.
 
-    Several instances may implement one level: a real host and a test double
-    are both hosts. Call an instance with an attrset to set its input, and with
-    a list to set its members. A member is a unit, a group, an instance, a
-    bare emission, or a list of members.
+    Several instances may implement one scope: a real host and a test double
+    are both hosts. Call an instance with its input, then its members:
+    `host.instance { name = "nas"; } [ … ]`. A member is a unit, a group, an
+    instance, a bare emission, or a list of members.
 
     # Type
 
     ```
-    nameLevel :: Address -> { within :: Level } -> Level
+    nameScope :: Address -> { within :: Scope } -> Scope
     ```
   */
-  nameLevel =
+  nameScope =
     address: definition:
     let
       name = display address;
-      within = named "rhizome: level `${name}`: `within`" (
+      within = named "rhizome: scope `${name}`: `within`" (
         definition.within
-          or (throw "rhizome: level `${name}` must say what it is `within`; the outermost is `rhizome.root`")
+          or (throw "rhizome: scope `${name}` must say what it is `within`; the outermost is `rhizome.root`")
       );
     in
     lib.fix (self: {
-      kind = "level";
+      kind = "scope";
       inherit address name within;
       id = identify address "within" definition;
       ancestors = [ within ] ++ within.ancestors;
@@ -368,12 +377,12 @@ let
     other: a host's name, a tag it carries, a module for its config.
 
         settings = define.fact {
-          level = level.user;
+          scope = scope.user;
           type = t.attrs;
           merge = merge.attrs.recursive;
         };
 
-    - `level` bounds it. Everything stated inside one instance of that level
+    - `scope` bounds it. Everything stated inside one instance of that scope
       is merged into one value, visible inside that instance and nowhere else.
     - `type` checks each value stated.
     - `merge` turns the `{ from, value }` entries into the value readers
@@ -386,7 +395,7 @@ let
     # Type
 
     ```
-    nameFact :: Address -> { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Fact
+    nameFact :: Address -> { scope? :: Scope, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Fact
     ```
   */
   nameFact =
@@ -398,7 +407,7 @@ let
         kind = "fact";
         inherit address name;
         id = identify address "merge" definition;
-        level = named "rhizome: fact `${name}`: `level`" (definition.level or root);
+        scope = named "rhizome: fact `${name}`: `scope`" (definition.scope or root);
         merge = definition.merge or (throw "rhizome: fact `${name}` must name a `merge`");
         optional = definition.optional or false;
         type = types.from (definition.type or types.any);
@@ -408,10 +417,19 @@ let
           fact = self;
           value = validate "fact `${name}`" self.type value;
         };
+
+        # Any number of values in one emission. The list may depend on
+        # what a unit uses, where the emissions themselves may not.
+        each = values: {
+          __emission = self.id;
+          fact = self;
+          each = true;
+          value = map (validate "fact `${name}`" self.type) values;
+        };
       };
     in
     lib.seq (known "fact `${name}`" [
-      "level"
+      "scope"
       "merge"
       "optional"
       "type"
@@ -422,17 +440,19 @@ let
 
         git = define.unit {
           uses = { settings = git.settings; pkgs = host.pkgs; };
-          config = { settings, pkgs }: [ (user.file { … }) (user.package pkgs.git) ];
+          provides = { settings, pkgs }: [ (user.file { … }) (user.package pkgs.git) ];
         };
 
     - `uses`: the facts it reads, each under a local name.
-    - `config`: its emissions, or a function from what it uses to them.
+    - `provides`: its emissions, or a function from what it uses to them.
       Lists may nest, so a helper can return several emissions.
-    - `emits`: the facts `config` emits into. Only needed when the list
-      itself, not just its payloads, depends on what the unit uses.
-    - `input`, `label`: typed input, and a label to tell one use of the
-      unit from another. The definition is then a function of that input:
-      `cfg: { … }`.
+    - `type`, `label`: the type of its input, and a label to tell one use
+      of the unit from another. The definition is then a function of that
+      input: `input: { … }`.
+
+    Which facts a unit provides must not depend on what it uses, because
+    that is worked out before anything is read. To give a fact a number of
+    values that does depend on it, use one emission: `fact.each [ … ]`.
 
     # Type
 
@@ -451,13 +471,13 @@ let
   /**
     Members that belong together, with typed input of their own:
 
-        unit = define.group (cfg: {
-          input = vpn.client.input;
-          config = [ (vpn.client cfg) (secrets.use { … }) ];
+        unit = define.group (input: {
+          type.exit-node = t.bool;
+          includes = [ (vpn.client input) (secrets.use { … }) ];
         });
 
-    - `config`: its members.
-    - `input`, `label`: as for a unit.
+    - `includes`: its members.
+    - `type`, `label`: as for a unit.
 
     A group reads nothing, so what it holds can never depend on a fact.
     It leaves no trace in the tree: its members belong to the instance the
@@ -478,23 +498,27 @@ let
   };
 
   /**
-    A branch of the tree: one instance of the levels it starts. Made with
-    `level.instance`.
+    A branch of the tree: one instance of the scopes it starts. Made with
+    `scope.instance`.
 
     # Type
 
     ```
-    nameInstance :: Address -> [Level] -> Definition -> Instance
+    nameInstance :: Address -> [Scope] -> Definition -> Instance
     ```
   */
-  nameInstance = address: levels: definition: {
+  nameInstance = address: scopes: definition: {
     kind = "instance";
-    inherit address levels definition;
+    inherit address scopes definition;
     name = display address;
     input = { };
     members = [ ];
     __functor =
-      self: arg: if lib.isList arg then self // { members = arg; } else self // { input = arg; };
+      self: input: members:
+      if !lib.isAttrs input || !lib.isList members then
+        throw "rhizome: `${self.name}` takes its input, then its members: `instance { … } [ … ]`"
+      else
+        self // { inherit input members; };
   };
 
   /**
@@ -560,15 +584,15 @@ let
           let
             where = show (locate context member);
             declared = record where "group" (declarations member.name member.definition);
-            input = validate "${where}: input" (types.from (declared.input or { })) member.input;
+            input = validate "${where}: input" (types.from (declared.type or { })) member.input;
 
             checked = known where [
-              "config"
-              "input"
+              "includes"
+              "type"
               "label"
             ] declared;
           in
-          lib.seq checked (lib.seq input (gather context ((apply member.definition input).config or [ ])))
+          lib.seq checked (lib.seq input (gather context ((apply member.definition input).includes or [ ])))
       ) (once (lib.flatten members))
     );
 
@@ -588,7 +612,7 @@ let
     };
 
   /**
-    Whether a fact, or a level, is among others. Compared by id.
+    Whether a fact, or a scope, is among others. Compared by id.
 
     # Type
 
@@ -633,7 +657,7 @@ let
     ];
 
   /**
-    Whether a fact's level has been started around here. Throws, naming
+    Whether a fact's scope has been started around here. Throws, naming
     the node, when it has not.
 
     # Type
@@ -644,13 +668,13 @@ let
   */
   outside =
     context: where: verb: fact:
-    context.pools ? ${fact.level.id}
-    || throw "rhizome: ${where}: ${verb} `${fact.name}` outside a `${fact.level.name}` instance";
+    context.pools ? ${fact.scope.id}
+    || throw "rhizome: ${where}: ${verb} `${fact.name}` outside a `${fact.scope.name}` instance";
 
   /**
-    Reject declarations that form a loop: a unit that uses A and emits
+    Reject declarations that form a loop: a unit that uses A and provides
     into B makes B depend on A. Dependency is tracked per unit, so one
-    that uses A makes everything it emits depend on A.
+    that uses A makes everything it provides depend on A.
 
     # Type
 
@@ -683,7 +707,44 @@ let
       ${lib.concatMapStringsSep "\n" (
         edge: "  ${edge.from.name} -> ${edge.to.name}, in ${edge.where}"
       ) looping}
-      A unit that uses a fact makes everything it emits depend on it. If only part of one does, split it.'';
+      A unit that uses a fact makes everything it provides depend on it. If only part of one does, split it.'';
+
+  /**
+    The entries one emission makes: one, or one per value for `fact.each`.
+    How many there are is not known until the payload is read.
+
+    # Type
+
+    ```
+    spread :: [Step] -> Emission -> [{ path :: [Step], value :: Any }]
+    ```
+  */
+  spread =
+    path: emission:
+    if emission.each or false then
+      map (value: { inherit path value; }) emission.value
+    else
+      [
+        {
+          inherit path;
+          inherit (emission) value;
+        }
+      ];
+
+  /**
+    A fact holding one value takes one statement, so `each` has no place
+    on it. Checking this needs no payload.
+
+    # Type
+
+    ```
+    countable :: String -> Emission -> Bool
+    ```
+  */
+  countable =
+    where: emission:
+    !(emission.each or false && emission.fact.merge ? expects)
+    || throw "rhizome: ${where}: `${emission.fact.name}` holds a single value, so it cannot be given `each`";
 
   /**
     A bare emission in a member list: written by the instance it sits in.
@@ -698,27 +759,22 @@ let
     context: emission:
     let
       where = show context.path;
-      fact = named "rhizome: ${where}: emits" emission.fact;
+      fact = named "rhizome: ${where}: provides" emission.fact;
     in
     {
       table.${fact.id} = {
         inherit fact;
-        entries = [
-          {
-            inherit (emission) value;
-            inherit (context) path;
-          }
-        ];
+        entries = spread context.path emission;
       };
 
       readers = [ ];
       order = [ ];
       routes = [ ];
-      check = outside context where "emits" fact;
+      check = outside context where "provides" fact && countable where emission;
     };
 
   /**
-    A unit: what it reads, what it emits, and the checks on both.
+    A unit: what it reads, what it provides, and the checks on both.
 
     # Type
 
@@ -735,31 +791,31 @@ let
       declared = record where "unit" (declarations node.name node.definition);
       uses = lib.mapAttrs (local: named "rhizome: ${where}: uses `${local}`") (declared.uses or { });
 
-      input = validate "${where}: input" (types.from (declared.input or { })) node.input;
-      config = (apply node.definition input).config or [ ];
+      input = validate "${where}: input" (types.from (declared.type or { })) node.input;
+      provides = (apply node.definition input).provides or [ ];
 
-      formals = if lib.isFunction config then lib.functionArgs config else { };
+      formals = if lib.isFunction provides then lib.functionArgs provides else { };
       unknown = lib.filter (name: !(uses ? ${name})) (lib.attrNames formals);
 
       run =
         values:
         lib.flatten (
-          if !lib.isFunction config then
-            config
+          if !lib.isFunction provides then
+            provides
           else if formals == { } then
-            config values
+            provides values
           else
-            config (lib.intersectAttrs formals values)
+            provides (lib.intersectAttrs formals values)
         );
 
       factOf =
-        emission: emission.fact or (throw "rhizome: ${where}: `config` must be a list of emissions");
+        emission: emission.fact or (throw "rhizome: ${where}: `provides` must be a list of emissions");
 
       # What each local name in `uses` resolves to. Lazy: nothing is merged
-      # until `config` reads it.
-      used = lib.mapAttrs (_: fact: context.pools.${fact.level.id} fact) uses;
+      # until `provides` reads it.
+      used = lib.mapAttrs (_: fact: context.pools.${fact.scope.id} fact) uses;
 
-      # Which facts `config` emits into, found without reading anything:
+      # Which facts it provides, found without reading anything:
       # it is run with values that throw. That works whenever only the
       # payloads, not the list, depend on what the unit uses.
       probe = builtins.tryEval (
@@ -769,32 +825,18 @@ let
         lib.deepSeq (map (c: c.id) facts) facts
       );
 
-      emits = map (named "rhizome: ${where}: emits") found;
+      provided = map (named "rhizome: ${where}: provides") found;
 
       found = lib.seq input (
         if unknown != [ ] then
-          throw "rhizome: ${where}: `config` asks for `${lib.head unknown}`, which is not in `uses`"
-        else if declared ? emits then
-          declared.emits
+          throw "rhizome: ${where}: `provides` asks for `${lib.head unknown}`, which is not in `uses`"
         else if probe.success then
           distinct probe.value
         else
-          throw "rhizome: ${where}: what it emits depends on what it uses, so it must declare `emits`"
+          throw "rhizome: ${where}: which facts it provides depends on what it uses. The list must not: give a fact a varying number of values with `fact.each`"
       );
 
-      emissions = map (
-        emission:
-        let
-          fact = factOf emission;
-        in
-        if !has fact emits then
-          throw "rhizome: ${where}: emits `${fact.name}` without declaring it in `emits`"
-        else
-          {
-            inherit fact path;
-            inherit (emission) value;
-          }
-      ) (run used);
+      emissions = map (emission: emission // { fact = factOf emission; }) (run used);
     in
     {
       # Keyed by fact, so only units that emit into a fact are
@@ -805,34 +847,34 @@ let
           fact:
           lib.nameValuePair fact.id {
             inherit fact;
-            entries = map (emission: { inherit (emission) path value; }) (
+            entries = lib.concatMap (spread path) (
               lib.filter (emission: emission.fact.id == fact.id) emissions
             );
           }
-        ) emits
+        ) provided
       );
 
       readers = map (fact: { inherit fact path where; }) (lib.attrValues uses);
 
-      order = lib.concatMap (from: map (to: { inherit from to where; }) emits) (lib.attrValues uses);
+      order = lib.concatMap (from: map (to: { inherit from to where; }) provided) (lib.attrValues uses);
       routes = [ ];
 
       # Forces every check and each emission's fact, never a payload.
       check =
         known where [
-          "config"
-          "emits"
-          "input"
+          "provides"
+          "type"
           "label"
           "uses"
         ] declared
         && lib.all (outside context where "uses") (lib.attrValues uses)
-        && lib.all (outside context where "emits") emits
+        && lib.all (outside context where "provides") provided
+        && lib.all (countable where) emissions
         && lib.all (emission: emission ? fact) emissions;
     };
 
   /**
-    An instance: its members, the pool of what they wrote for the levels it
+    An instance: its members, the pool of what they wrote for the scopes it
     starts, and what passes through to the instances above.
 
     # Type
@@ -848,19 +890,19 @@ let
       where = show path;
 
       declared = record where "instance" (declarations node.name node.definition);
-      levels = map (named "rhizome: ${where}: level") node.levels;
-      here = level: lib.any (started: started.id == level.id) levels;
+      scopes = map (named "rhizome: ${where}: scope") node.scopes;
+      here = scope: lib.any (started: started.id == scope.id) scopes;
 
-      input = validate "${where}: input" (types.from (declared.input or { })) node.input;
+      input = validate "${where}: input" (types.from (declared.type or { })) node.input;
 
       inside = {
         inherit path;
-        levels = context.levels ++ levels;
-        pools = context.pools // lib.listToAttrs (map (level: lib.nameValuePair level.id read) levels);
+        scopes = context.scopes ++ scopes;
+        pools = context.pools // lib.listToAttrs (map (scope: lib.nameValuePair scope.id read) scopes);
       };
 
       members = map (evaluate inside) (
-        gather inside (node.members ++ ((apply node.definition input).config or [ ]))
+        gather inside (node.members ++ ((apply node.definition input).includes or [ ]))
       );
 
       # A merge is given where each value came from as errors spell it.
@@ -887,20 +929,20 @@ let
       single = fact: fact.merge ? expects;
 
       allReaders = lib.concatMap (member: member.readers) members;
-      readers = lib.filter (reader: here reader.fact.level) allReaders;
+      readers = lib.filter (reader: here reader.fact.scope) allReaders;
       isRead = lib.listToAttrs (map (reader: lib.nameValuePair reader.fact.id true) readers);
 
-      # A level cannot start inside a level that belongs inside it.
+      # A scope cannot start inside a scope that belongs inside it.
       inverted = lib.findFirst (
-        outer: lib.any (level: has level outer.ancestors) levels
-      ) null context.levels;
+        outer: lib.any (scope: has scope outer.ancestors) scopes
+      ) null context.scopes;
 
       # Values written for nobody are an error, unless the fact says they
       # are optional. Whoever evaluates the tree reads from the root, so
       # nothing there is unread.
       unread = lib.findFirst (
         slot:
-        here slot.fact.level && !slot.fact.optional && !(isRead ? ${slot.fact.id}) && slot.entries != [ ]
+        here slot.fact.scope && !slot.fact.optional && !(isRead ? ${slot.fact.id}) && slot.entries != [ ]
       ) null (lib.optionals (!here root) (lib.attrValues pool));
 
       # A fact holding a single value takes one writer, or one at most.
@@ -917,8 +959,8 @@ let
       inherit pool read;
 
       # What passes through to the instances above.
-      table = lib.filterAttrs (_: slot: !here slot.fact.level) pool;
-      readers = lib.filter (reader: !here reader.fact.level) allReaders;
+      table = lib.filterAttrs (_: slot: !here slot.fact.scope) pool;
+      readers = lib.filter (reader: !here reader.fact.scope) allReaders;
 
       order = lib.concatMap (member: member.order) members;
 
@@ -937,19 +979,19 @@ let
       check =
         lib.seq input (
           known where [
-            "config"
-            "input"
+            "includes"
+            "type"
             "label"
           ] declared
         )
         && (
           inverted == null
-          || throw "rhizome: ${where}: starts a level inside `${inverted.name}`, which belongs inside it"
+          || throw "rhizome: ${where}: starts a scope inside `${inverted.name}`, which belongs inside it"
         )
         && lib.all (member: member.check) members
         && (
           unread == null
-          || throw "rhizome: ${show (lib.head unread.entries).path}: emits `${unread.fact.name}`, which nothing in ${where} uses"
+          || throw "rhizome: ${show (lib.head unread.entries).path}: provides `${unread.fact.name}`, which nothing in ${where} uses"
         )
         && (
           miscounted == null
@@ -1001,27 +1043,27 @@ let
     everything emitted is used. Payloads stay lazy, so a host that is never
     built costs only its structure.
 
-    `levels` lets the caller stand in for the instances a member would normally
+    `scopes` lets the caller stand in for the instances a member would normally
     sit inside, to run it on its own.
 
     # Type
 
     ```
-    eval :: { levels? :: [Level] } -> Node | [Node] -> { collect :: Fact -> Any, routes :: [Route] }
+    eval :: { scopes? :: [Scope] } -> Node | [Node] -> { collect :: Fact -> Any, routes :: [Route] }
     ```
   */
   eval =
     {
-      levels ? [ ],
+      scopes ? [ ],
     }:
     tree:
     let
-      reachable = [ root ] ++ levels;
-      top = nameInstance (locally "root") reachable { } (lib.toList tree);
+      reachable = [ root ] ++ scopes;
+      top = nameInstance (locally "root") reachable { } { } (lib.toList tree);
 
       result = evaluateInstance {
         path = [ ];
-        levels = [ ];
+        scopes = [ ];
         pools = { };
       } top;
 
@@ -1030,8 +1072,8 @@ let
     lib.seq checked {
       collect =
         fact:
-        if !has (named "rhizome: `collect`" fact).level reachable then
-          throw "rhizome: `${fact.name}` is bounded by `${fact.level.name}` and never reaches the root"
+        if !has (named "rhizome: `collect`" fact).scope reachable then
+          throw "rhizome: `${fact.name}` is bounded by `${fact.scope.name}` and never reaches the root"
         else
           result.read fact;
 
@@ -1053,7 +1095,7 @@ let
             from = entry.path;
             to = locate { path = [ ]; } top;
           }) slot.entries
-        ) (lib.filter (slot: slot.fact.level.id == root.id) (lib.attrValues result.pool));
+        ) (lib.filter (slot: slot.fact.scope.id == root.id) (lib.attrValues result.pool));
     };
 in
 

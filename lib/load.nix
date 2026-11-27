@@ -11,7 +11,7 @@
   - `rhizome`: the library.
   - `units`: the whole tree, so any unit can reach any other.
   - `self`: what this file returns, with its definitions named.
-  - `define`: the builders: `define.level`, `define.fact`, `define.unit`
+  - `define`: the builders: `define.scope`, `define.fact`, `define.unit`
     and `define.group`.
 
   A file returns an attrset. Each attribute is a definition, and takes its

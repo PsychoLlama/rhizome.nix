@@ -6,5 +6,5 @@ rec {
     merge = rhizome.merge.list;
   };
 
-  unit = define.unit { config = [ (letter "dear") ]; };
+  unit = define.unit { provides = [ (letter "dear") ]; };
 }
