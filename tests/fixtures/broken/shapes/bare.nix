@@ -1,3 +1,3 @@
-{ rhizome, ... }:
+{ module, ... }:
 
-rhizome.component { }
+module.component { }

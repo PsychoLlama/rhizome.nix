@@ -1,7 +1,7 @@
-{ rhizome, ... }:
+{ rhizome, module, ... }:
 
 {
-  said = rhizome.channel {
+  said = module.channel {
     type = rhizome.types.str;
     merge = rhizome.merge.list;
   };

@@ -7,12 +7,16 @@ let
   # Tests define things one at a time. Each is a module of one.
   define =
     builder: name: definition:
-    (rhizome.module { } { ${name} = builder definition; }).${name};
+    (rhizome.module { } (module: _: { ${name} = builder module definition; })).${name};
 
-  level = define rhizome.level;
-  channel = define rhizome.channel;
-  component = define rhizome.component;
-  bundle = define rhizome.group;
+  level = define (module: module.level);
+  channel = define (module: module.channel);
+  component = define (module: module.component);
+  bundle = define (module: module.group);
+  scope = level: define (_: level.scope);
+
+  # Builders taken out of their module, to make what nothing will name.
+  loose = (rhizome.module { } (module: _: { lib = module; })).lib;
 
   group = level "group" { within = rhizome.root; };
 
@@ -61,7 +65,7 @@ let
   };
 
   # A scope that starts a `group` and writes its prefix.
-  team = define group.scope "team" (cfg: {
+  team = scope group "team" (cfg: {
     input.prefix = t.str;
     label = cfg.prefix;
     config = [ (prefix cfg.prefix) ];
@@ -598,7 +602,7 @@ in
   # Each team bounds `message`: the two do not see each other's.
   testLevelsBoundChannels = {
     expr = reports (
-      define (level "company" { within = rhizome.root; }).scope "company" { } [
+      scope (level "company" { within = rhizome.root; }) "company" { } [
         (team { prefix = "hello"; } [
           sender
           receiver
@@ -624,7 +628,7 @@ in
   testChannelsPassThroughOtherScopes = {
     expr = reports (
       team { prefix = "hey"; } [
-        (define seat.scope "subteam" { } [ sender ])
+        (scope seat "subteam" { } [ sender ])
         receiver
       ]
     );
@@ -634,7 +638,7 @@ in
 
   # `within` orders levels: a group cannot start inside a seat.
   testLevelsCannotNestInsideOut = {
-    expr = reports (define seat.scope "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
+    expr = reports (scope seat "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
     expectedError = failure "team.hi.: starts a level inside `seat`, which belongs inside it";
   };
 
@@ -642,7 +646,7 @@ in
   # no input.
   testSeveralScopesCanImplementALevel = {
     expr = reports (
-      define group.scope "double" { config = [ (prefix "test") ]; } [
+      scope group "double" { config = [ (prefix "test") ]; } [
         sender
         receiver
       ]
@@ -768,16 +772,18 @@ in
               "mail"
             ];
           }
-          (self: {
-            floor = rhizome.level { within = rhizome.root; };
-            letter = rhizome.channel { merge = merge.list; };
-            writer = rhizome.component { config = [ (self.letter "dear") ]; };
-            unit = rhizome.group { config = [ self.writer ]; };
-            office = self.floor.scope { };
+          (
+            module: self: {
+              floor = module.level { within = rhizome.root; };
+              letter = module.channel { merge = merge.list; };
+              writer = module.component { config = [ (self.letter "dear") ]; };
+              unit = module.group { config = [ self.writer ]; };
+              office = self.floor.scope { };
 
-            lib.stamp = 1;
-            values.price = 2;
-          });
+              lib.stamp = 1;
+              values.price = 2;
+            }
+          );
     in
     {
       expr = {
@@ -822,12 +828,14 @@ in
     let
       letter =
         namespace:
-        (rhizome.module { inherit namespace; } {
-          letter = rhizome.channel {
-            type = t.str;
-            merge = merge.list;
-          };
-        }).letter;
+        (rhizome.module { inherit namespace; } (
+          module: _: {
+            letter = module.channel {
+              type = t.str;
+              merge = merge.list;
+            };
+          }
+        )).letter;
 
       ours = letter "ours";
       theirs = letter "theirs";
@@ -846,27 +854,29 @@ in
   # `rec` sees a definition before the module has named it.
   testRecReachesUnnamedDefinitions =
     let
-      mail = rhizome.module { } rec {
-        letter = rhizome.channel {
-          type = t.str;
-          merge = merge.list;
-        };
+      mail = rhizome.module { } (
+        module: _: rec {
+          letter = module.channel {
+            type = t.str;
+            merge = merge.list;
+          };
 
-        unit = rhizome.component { config = [ (letter "dear") ]; };
-      };
+          unit = module.component { config = [ (letter "dear") ]; };
+        }
+      );
     in
     {
       expr = (rhizome.eval { } mail.unit).collect mail.letter;
-      expectedError = failure "rhizome: root > unit: emits: this channel has no name. It was written at";
+      expectedError = failure "rhizome: root > unit: emits: this channel has no name .written at";
     };
 
   testUnnamedErrorsSayWhatToDo = {
-    expr = (rhizome.eval { } (rhizome.component { })).routes;
-    expectedError = failure "a file reaches its own through `self`";
+    expr = (rhizome.eval { } (loose.component { })).routes;
+    expectedError = failure "Reach a file's own definitions through `self`, not `rec` or `let`";
   };
 
   testUnnamedMembersFail = {
-    expr = (rhizome.eval { } (rhizome.component { })).routes;
+    expr = (rhizome.eval { } (loose.component { })).routes;
     expectedError = failure "rhizome: root: this component has no name";
   };
 
@@ -874,7 +884,7 @@ in
     expr =
       (rhizome.eval { } (
         component "reader" {
-          uses.letters = rhizome.channel { merge = merge.list; };
+          uses.letters = loose.channel { merge = merge.list; };
         }
       )).routes;
 
@@ -884,7 +894,7 @@ in
   testUnnamedLevelsFail = {
     expr =
       (channel "lost" {
-        level = rhizome.level { within = rhizome.root; };
+        level = loose.level { within = rhizome.root; };
         merge = merge.list;
       }).level;
 
@@ -894,7 +904,7 @@ in
   # Reading a channel's type needs no name, so `rec` is harmless there.
   testUnnamedChannelsStillHaveATypes = {
     expr =
-      (rhizome.channel {
+      (loose.channel {
         type = t.str;
         merge = merge.list;
       }).type.name;
@@ -903,7 +913,7 @@ in
   };
 
   testModulesRejectLooseValues = {
-    expr = (rhizome.module { } { port = 8080; }).port;
+    expr = (rhizome.module { } (_: _: { port = 8080; })).port;
     expectedError = failure "`port` is not a definition. Functions belong in `lib` and constants in `values`";
   };
 
@@ -1033,6 +1043,12 @@ in
   testLoadRejectsDefinitionsFromAnotherModule = {
     expr = (rhizome.load ../tests/fixtures/broken/shapes { }).borrowed.unit;
     expectedError = failure "`borrowed.unit` holds the component `elsewhere.unit`, which another module named";
+  };
+
+  # Builders belong to the module that handed them out.
+  testLoadRejectsAnotherModulesBuilders = {
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).smuggled.unit;
+    expectedError = failure "`smuggled.unit` holds a component made with another module's builders";
   };
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
