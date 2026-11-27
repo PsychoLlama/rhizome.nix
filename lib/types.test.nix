@@ -39,6 +39,25 @@ in
     expectedError = failure "here: expected path, got a int";
   };
 
+  # A list of modules is not a module: the usual slip.
+  testModules = {
+    expr = [
+      (check t.module { })
+      (check t.module ({ pkgs, ... }: { }))
+      (check t.module ./types.nix)
+      (check t.module [ { } ])
+      (check t.module "services.nginx.enable")
+    ];
+
+    expected = [
+      true
+      true
+      true
+      false
+      false
+    ];
+  };
+
   testPrimitives = {
     expr = [
       (check t.str "a")

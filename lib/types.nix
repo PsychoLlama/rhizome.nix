@@ -70,6 +70,19 @@ rec {
   );
 
   /**
+    A module for NixOS, Home Manager, or any system built on the same
+    one: a function, an attrset, or a path to a file holding either.
+    What is inside is left to the module system.
+
+    # Type
+
+    ```
+    module :: Type
+    ```
+  */
+  module = mk "module" (value: lib.isFunction value || lib.isAttrs value || lib.isPath value);
+
+  /**
     A value of one type or the other.
 
     # Type
