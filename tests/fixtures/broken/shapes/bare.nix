@@ -1,3 +1,3 @@
 { module, ... }:
 
-module.component { }
+module.unit { }

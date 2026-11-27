@@ -1,10 +1,10 @@
 { rhizome, module, ... }:
 
 rec {
-  letter = module.channel {
+  letter = module.fact {
     type = rhizome.types.str;
     merge = rhizome.merge.list;
   };
 
-  unit = module.component { config = [ (letter "dear") ]; };
+  unit = module.unit { config = [ (letter "dear") ]; };
 }

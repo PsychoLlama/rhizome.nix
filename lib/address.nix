@@ -9,7 +9,7 @@
   - `path`: the module it is in, as a list: `[ "services" "dns" ]`.
   - `name`: what the module calls it.
 
-  A trail names a node in an evaluated tree: one step per scope on the way
+  A trail names a node in an evaluated tree: one step per instance on the way
   down, then the node. A step is `{ address, label }`, where `label` tells
   instances of one definition apart, or is null.
 */
@@ -30,7 +30,7 @@ let
   show = address: lib.concatStringsSep "." (address.path ++ [ address.name ]);
 
   /**
-    One step of a trail: `platform.host.scope[nas-001]`.
+    One step of a trail: `platform.host.instance[nas-001]`.
 
     # Type
 
@@ -60,7 +60,7 @@ in
   };
 
   /**
-    A trail as errors spell it: `root > platform.host.scope[nas-001] > services.dns.unit`.
+    A trail as errors spell it: `root > platform.host.instance[nas-001] > services.dns.unit`.
 
     # Type
 

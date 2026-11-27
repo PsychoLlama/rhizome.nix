@@ -10,10 +10,10 @@ let
     (rhizome.module { } (module: _: { ${name} = builder module definition; })).${name};
 
   level = define (module: module.level);
-  channel = define (module: module.channel);
-  component = define (module: module.component);
+  fact = define (module: module.fact);
+  unit = define (module: module.unit);
   bundle = define (module: module.group);
-  scope = level: define (_: level.scope);
+  instance = level: define (_: level.instance);
 
   # Builders taken out of their module, to make what nothing will name.
   loose = (rhizome.module { } (module: _: { lib = module; })).lib;
@@ -22,50 +22,50 @@ let
 
   seat = level "seat" { within = group; };
 
-  # A single value, written by the scope. Nobody has to read it.
-  prefix = channel "prefix" {
+  # A single value, written by the instance. Nobody has to read it.
+  prefix = fact "prefix" {
     level = group;
     type = t.str;
     merge = merge.one;
     optional = true;
   };
 
-  message = channel "message" {
+  message = fact "message" {
     level = group;
     type = t.str;
     merge = merge.list;
   };
 
-  reply = channel "reply" {
+  reply = fact "reply" {
     level = group;
     type = t.str;
     merge = merge.list;
   };
 
   # Reaches the root.
-  report = channel "report" {
+  report = fact "report" {
     type = t.list t.str;
     merge = merge.list;
   };
 
-  sender = component "sender" {
+  sender = unit "sender" {
     uses = { inherit prefix; };
     config = { prefix }: [ (message "${prefix}!") ];
   };
 
-  # Says the same thing as `sender`, and is a different component.
-  echo = component "echo" {
+  # Says the same thing as `sender`, and is a different unit.
+  echo = unit "echo" {
     uses = { inherit prefix; };
     config = { prefix }: [ (message "${prefix}!") ];
   };
 
-  receiver = component "receiver" {
+  receiver = unit "receiver" {
     uses.messages = message;
     config = { messages }: [ (report messages) ];
   };
 
-  # A scope that starts a `group` and writes its prefix.
-  team = scope group "team" (cfg: {
+  # An instance that starts a `group` and writes its prefix.
+  team = instance group "team" (cfg: {
     input.prefix = t.str;
     label = cfg.prefix;
     config = [ (prefix cfg.prefix) ];
@@ -91,8 +91,8 @@ in
     expected = [ [ "hello!" ] ];
   };
 
-  # The caller can stand in for a scope, to run one component on its own.
-  testComponentRunsAlone = {
+  # The caller can stand in for an instance, to run one unit on its own.
+  testUnitRunsAlone = {
     expr =
       (rhizome.eval { levels = [ group ]; } [
         (prefix "yo")
@@ -117,16 +117,15 @@ in
 
   testMergeEntriesKeepsProvenance =
     let
-      audit = channel "audit" {
+      audit = fact "audit" {
         type = t.str;
         merge = merge.entries;
       };
     in
     {
       expr =
-        (rhizome.eval { } (
-          team { prefix = "hi"; } [ (component "auditor" { config = [ (audit "seen") ]; }) ]
-        )).collect
+        (rhizome.eval { } (team { prefix = "hi"; } [ (unit "auditor" { config = [ (audit "seen") ]; }) ]))
+        .collect
           audit;
 
       expected = [
@@ -137,10 +136,10 @@ in
       ];
     };
 
-  # Channels are told apart by definition, not by name.
-  testSameNameIsNotSameChannel =
+  # Facts are told apart by definition, not by name.
+  testSameNameIsNotSameFact =
     let
-      other = channel "message" {
+      other = fact "message" {
         level = group;
         type = t.str;
         merge = merge.list;
@@ -151,7 +150,7 @@ in
         team { prefix = "hi"; } [
           sender
           receiver
-          (component "elsewhere" {
+          (unit "elsewhere" {
             uses.messages = other;
             config = { messages }: [ (report messages) ];
           })
@@ -164,14 +163,14 @@ in
       ];
     };
 
-  # The list of emissions may depend on what a component uses, as long as
-  # it declares which channels they go to.
+  # The list of emissions may depend on what a unit uses, as long as
+  # it declares which facts they go to.
   testEmissionsCanDependOnWhatIsUsed = {
     expr = reports (
       team { prefix = "hi"; } [
         sender
         echo
-        (component "splitter" {
+        (unit "splitter" {
           uses.messages = message;
           emits = [ report ];
           config = { messages }: map (text: report [ text ]) messages;
@@ -192,7 +191,7 @@ in
     expr = reports (
       team { prefix = "hi"; } [
         sender
-        (component "splitter" {
+        (unit "splitter" {
           uses.messages = message;
           config = { messages }: map (text: report [ text ]) messages;
         })
@@ -220,13 +219,13 @@ in
   };
 
   testEmittingOutsideItsLevelFails = {
-    expr = (rhizome.eval { } (component "loud" { config = [ (message "hi") ]; })).routes;
-    expectedError = failure "root > loud: emits `message` outside a `group` scope";
+    expr = (rhizome.eval { } (unit "loud" { config = [ (message "hi") ]; })).routes;
+    expectedError = failure "root > loud: emits `message` outside a `group` instance";
   };
 
   testUsingOutsideItsLevelFails = {
     expr = (rhizome.eval { } receiver).routes;
-    expectedError = failure "root > receiver: uses `message` outside a `group` scope";
+    expectedError = failure "root > receiver: uses `message` outside a `group` instance";
   };
 
   testUnreadEmissionFails = {
@@ -234,16 +233,16 @@ in
     expectedError = failure "sender: emits `message`, which nothing in root > team.hi. uses";
   };
 
-  # An optional channel is an offer: nobody has to read it.
-  testOptionalChannelsMayGoUnread = {
+  # An optional fact is an offer: nobody has to read it.
+  testOptionalFactsMayGoUnread = {
     expr = reports (team { prefix = "hi"; } [ ]);
     expected = [ ];
   };
 
-  # Holding a single value does not make a channel optional.
+  # Holding a single value does not make a fact optional.
   testSingleValuesMustBeReadUnlessOptional =
     let
-      motto = channel "motto" {
+      motto = fact "motto" {
         level = group;
         type = t.str;
         merge = merge.one;
@@ -254,8 +253,8 @@ in
       expectedError = failure "team.hi.: emits `motto`, which nothing in root > team.hi. uses";
     };
 
-  # Two lists naming one component include it once.
-  testComponentsNamedTwiceAreIncludedOnce =
+  # Two lists naming one unit include it once.
+  testUnitsNamedTwiceAreIncludedOnce =
     let
       morning = [ sender ];
       evening = [
@@ -277,7 +276,7 @@ in
   # Given input, it is the same member when the input is equal too.
   testInstancesDifferByInput =
     let
-      shout = component "shout" (cfg: {
+      shout = unit "shout" (cfg: {
         input.text = t.str;
         config = [ (message cfg.text) ];
       });
@@ -324,7 +323,7 @@ in
   testConfigListsNest = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "chatty" {
+        (unit "chatty" {
           config = [
             (message "one")
             [
@@ -349,13 +348,13 @@ in
   # A single value that may be absent is null when nobody wrote it...
   testOneOrNoneIsNullWhenAbsent =
     let
-      motto = channel "motto" {
+      motto = fact "motto" {
         level = group;
         type = t.str;
         merge = merge.one-or-none;
       };
 
-      reader = component "reader" {
+      reader = unit "reader" {
         uses = { inherit motto; };
         config = { motto }: [ (report [ (if motto == null then "none" else motto) ]) ];
       };
@@ -380,7 +379,7 @@ in
   # ...and still takes one writer at most.
   testOneOrNoneRejectsTwoWriters =
     let
-      motto = channel "motto" {
+      motto = fact "motto" {
         level = group;
         type = t.str;
         merge = merge.one-or-none;
@@ -400,7 +399,7 @@ in
 
   testMembersMustBeNodes = {
     expr = reports (team { prefix = "hi"; } [ message ]);
-    expectedError = failure "root > team.hi.: a member must be a component, a group, a scope, or an emission, got a channel";
+    expectedError = failure "root > team.hi.: a member must be a unit, a group, an instance, or an emission, got a fact";
   };
 
   testLevelsMustSayWhatTheyAreWithin = {
@@ -408,24 +407,24 @@ in
     expectedError = failure "level `loose` must say what it is `within`";
   };
 
-  testChannelsMustNameAMerge = {
-    expr = (channel "bare" { }).merge;
-    expectedError = failure "channel `bare` must name a `merge`";
+  testFactsMustNameAMerge = {
+    expr = (fact "bare" { }).merge;
+    expectedError = failure "fact `bare` must name a `merge`";
   };
 
-  testChannelsRejectUnknownFields = {
+  testFactsRejectUnknownFields = {
     expr =
-      (channel "stale" {
+      (fact "stale" {
         type = t.str;
         merge = merge.list;
         default = "x";
       }).id;
 
-    expectedError = failure "channel `stale`: unknown field `default`";
+    expectedError = failure "fact `stale`: unknown field `default`";
   };
 
   # Reading from the root is limited to what reaches it.
-  testCollectingABoundedChannelFromTheRootFails = {
+  testCollectingABoundedFactFromTheRootFails = {
     expr =
       (rhizome.eval { } (
         team { prefix = "hi"; } [
@@ -438,15 +437,15 @@ in
     expectedError = failure "`message` is bounded by `group` and never reaches the root";
   };
 
-  # A cycle is reported with the component behind each edge.
-  testCyclesNameTheComponents = {
+  # A cycle is reported with the unit behind each edge.
+  testCyclesNameTheUnits = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "a" {
+        (unit "a" {
           uses.messages = message;
           config = [ (reply "a") ];
         })
-        (component "b" {
+        (unit "b" {
           uses.replies = reply;
           config = [ (message "b") ];
         })
@@ -456,7 +455,7 @@ in
     expectedError = failure "message -> reply, in root > team.hi. > a";
   };
 
-  # Whoever composes the tree can also discard a channel, explicitly.
+  # Whoever composes the tree can also discard a fact, explicitly.
   testIgnoreReadsAndDiscards = {
     expr = reports (
       team { prefix = "hi"; } [
@@ -471,7 +470,7 @@ in
   testUndeclaredEmissionFails = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "undeclared" {
+        (unit "undeclared" {
           emits = [ ];
           config = [ (report [ ]) ];
         })
@@ -484,7 +483,7 @@ in
   testConfigCanOnlyAskForWhatIsUsed = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "greedy" {
+        (unit "greedy" {
           config = { prefix }: [ ];
         })
       ]
@@ -496,7 +495,7 @@ in
   testUnknownFieldsFail = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "stale" {
+        (unit "stale" {
           collects = [ message ];
         })
       ]
@@ -513,7 +512,7 @@ in
   # A field with a default may be left out.
   testInputFieldsCanHaveDefaults =
     let
-      greeter = component "greeter" (cfg: {
+      greeter = unit "greeter" (cfg: {
         input = {
           name = t.str;
           greeting = t.default t.str "hello";
@@ -537,17 +536,17 @@ in
     };
 
   # Definitions made by one helper are told apart by name, so a unit that
-  # may appear twice gets a channel per instance.
-  testInstancesGetTheirOwnChannels =
+  # may appear twice gets a fact per instance.
+  testInstancesGetTheirOwnFacts =
     let
       inbox = name: rec {
-        letter = channel "${name}.letter" {
+        letter = fact "${name}.letter" {
           level = group;
           type = t.str;
           merge = merge.list;
         };
 
-        reader = component name {
+        reader = unit name {
           uses.letters = letter;
           config = { letters }: [ (report letters) ];
         };
@@ -580,7 +579,7 @@ in
   testDeclarationsCannotUseInput = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "dynamic" (cfg: {
+        (unit "dynamic" (cfg: {
           input.loud = t.bool;
           uses = if cfg.loud then { messages = message; } else { };
         }) { loud = true; })
@@ -593,16 +592,16 @@ in
   # Payloads are the one thing left lazy: checked when used.
   testEmissionPayloadIsTypeChecked = {
     expr =
-      (rhizome.eval { levels = [ group ]; } (component "numeric" { config = [ (message 42) ]; })).collect
+      (rhizome.eval { levels = [ group ]; } (unit "numeric" { config = [ (message 42) ]; })).collect
         message;
 
-    expectedError = failure "channel `message`: expected str, got a int";
+    expectedError = failure "fact `message`: expected str, got a int";
   };
 
   # Each team bounds `message`: the two do not see each other's.
-  testLevelsBoundChannels = {
+  testLevelsBoundFacts = {
     expr = reports (
-      scope (level "company" { within = rhizome.root; }) "company" { } [
+      instance (level "company" { within = rhizome.root; }) "company" { } [
         (team { prefix = "hello"; } [
           sender
           receiver
@@ -624,11 +623,11 @@ in
     ];
   };
 
-  # A scope that does not start the channel's level is transparent to it.
-  testChannelsPassThroughOtherScopes = {
+  # An instance that does not start the fact's level is transparent to it.
+  testFactsPassThroughOtherInstances = {
     expr = reports (
       team { prefix = "hey"; } [
-        (scope seat "subteam" { } [ sender ])
+        (instance seat "subteam" { } [ sender ])
         receiver
       ]
     );
@@ -638,15 +637,15 @@ in
 
   # `within` orders levels: a group cannot start inside a seat.
   testLevelsCannotNestInsideOut = {
-    expr = reports (scope seat "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
+    expr = reports (instance seat "desk" { } [ (team { prefix = "hi"; } [ ]) ]);
     expectedError = failure "team.hi.: starts a level inside `seat`, which belongs inside it";
   };
 
-  # A second scope for the same level: a stand-in for `team` that needs
+  # A second instance for the same level: a stand-in for `team` that needs
   # no input.
-  testSeveralScopesCanImplementALevel = {
+  testSeveralInstancesCanImplementALevel = {
     expr = reports (
-      scope group "double" { config = [ (prefix "test") ]; } [
+      instance group "double" { config = [ (prefix "test") ]; } [
         sender
         receiver
       ]
@@ -655,11 +654,11 @@ in
     expected = [ [ "test!" ] ];
   };
 
-  # A channel's type can be reused, so a record that carries its values
+  # A fact's type can be reused, so a record that carries its values
   # changes with it.
-  testChannelTypesCanBeReferenced =
+  testFactTypesCanBeReferenced =
     let
-      summary = channel "summary" {
+      summary = fact "summary" {
         type = {
           first = message.type;
           all = t.list message.type;
@@ -675,28 +674,28 @@ in
         })).collect
           summary;
 
-      expectedError = failure "channel `summary`: first: expected str, got a int";
+      expectedError = failure "fact `summary`: first: expected str, got a int";
     };
 
   # One uses messages and emits replies; the other does the reverse.
-  testChannelCyclesAreRejectedFromDeclarations = {
+  testFactCyclesAreRejectedFromDeclarations = {
     expr = reports (
       team { prefix = "hi"; } [
-        (component "a" {
+        (unit "a" {
           uses.messages = message;
           config = [ (reply "a") ];
         })
-        (component "b" {
+        (unit "b" {
           uses.replies = reply;
           config = [ (message "b") ];
         })
       ]
     );
 
-    expectedError = failure "channels form a cycle";
+    expectedError = failure "facts form a cycle";
   };
 
-  # A route is data: the channel's address, and a trail for each end.
+  # A route is data: the fact's address, and a trail for each end.
   testRoutesAreStructured = {
     expr =
       builtins.head
@@ -708,7 +707,7 @@ in
         )).routes;
 
     expected = {
-      channel = {
+      fact = {
         inherit (prefix) address;
         name = "prefix";
       };
@@ -775,10 +774,10 @@ in
           (
             module: self: {
               floor = module.level { within = rhizome.root; };
-              letter = module.channel { merge = merge.list; };
-              writer = module.component { config = [ (self.letter "dear") ]; };
+              letter = module.fact { merge = merge.list; };
+              writer = module.unit { config = [ (self.letter "dear") ]; };
               unit = module.group { config = [ self.writer ]; };
-              office = self.floor.scope { };
+              office = self.floor.instance { };
 
               lib.stamp = 1;
               values.price = 2;
@@ -830,7 +829,7 @@ in
         namespace:
         (rhizome.module { inherit namespace; } (
           module: _: {
-            letter = module.channel {
+            letter = module.fact {
               type = t.str;
               merge = merge.list;
             };
@@ -856,55 +855,55 @@ in
     let
       mail = rhizome.module { } (
         module: _: rec {
-          letter = module.channel {
+          letter = module.fact {
             type = t.str;
             merge = merge.list;
           };
 
-          unit = module.component { config = [ (letter "dear") ]; };
+          unit = module.unit { config = [ (letter "dear") ]; };
         }
       );
     in
     {
       expr = (rhizome.eval { } mail.unit).collect mail.letter;
-      expectedError = failure "rhizome: root > unit: emits: this channel has no name .written at";
+      expectedError = failure "rhizome: root > unit: emits: this fact has no name .written at";
     };
 
   testUnnamedErrorsSayWhatToDo = {
-    expr = (rhizome.eval { } (loose.component { })).routes;
+    expr = (rhizome.eval { } (loose.unit { })).routes;
     expectedError = failure "Reach a file's own definitions through `self`, not `rec` or `let`";
   };
 
   testUnnamedMembersFail = {
-    expr = (rhizome.eval { } (loose.component { })).routes;
-    expectedError = failure "rhizome: root: this component has no name";
+    expr = (rhizome.eval { } (loose.unit { })).routes;
+    expectedError = failure "rhizome: root: this unit has no name";
   };
 
   testUnnamedUsesFail = {
     expr =
       (rhizome.eval { } (
-        component "reader" {
-          uses.letters = loose.channel { merge = merge.list; };
+        unit "reader" {
+          uses.letters = loose.fact { merge = merge.list; };
         }
       )).routes;
 
-    expectedError = failure "rhizome: root > reader: uses `letters`: this channel has no name";
+    expectedError = failure "rhizome: root > reader: uses `letters`: this fact has no name";
   };
 
   testUnnamedLevelsFail = {
     expr =
-      (channel "lost" {
+      (fact "lost" {
         level = loose.level { within = rhizome.root; };
         merge = merge.list;
       }).level;
 
-    expectedError = failure "rhizome: channel `lost`: `level`: this level has no name";
+    expectedError = failure "rhizome: fact `lost`: `level`: this level has no name";
   };
 
-  # Reading a channel's type needs no name, so `rec` is harmless there.
-  testUnnamedChannelsStillHaveATypes = {
+  # Reading a fact's type needs no name, so `rec` is harmless there.
+  testUnnamedFactsStillHaveATypes = {
     expr =
-      (loose.channel {
+      (loose.fact {
         type = t.str;
         merge = merge.list;
       }).type.name;
@@ -920,7 +919,7 @@ in
   # A group passes typed input on to its members.
   testGroupsHoldMembers =
     let
-      shout = component "shout" (cfg: {
+      shout = unit "shout" (cfg: {
         input.text = t.str;
         config = [ (message cfg.text) ];
       });
@@ -938,7 +937,7 @@ in
       expected = [ [ "hey" ] ];
     };
 
-  # Two groups naming one component include it once, and a group leaves no
+  # Two groups naming one unit include it once, and a group leaves no
   # trace in the path.
   testGroupsShareMembers =
     let
@@ -978,8 +977,8 @@ in
     expectedError = failure "strict: input: text: expected str, got a int";
   };
 
-  # A group reads nothing, so what it holds cannot depend on a channel.
-  testGroupsCannotUseChannels = {
+  # A group reads nothing, so what it holds cannot depend on a fact.
+  testGroupsCannotUseFacts = {
     expr = reports (
       team { prefix = "hi"; } [
         (bundle "nosy" { uses.messages = message; })
@@ -989,9 +988,9 @@ in
     expectedError = failure "nosy: unknown field `uses`";
   };
 
-  testComponentsAreRecords = {
-    expr = reports (team { prefix = "hi"; } [ (component "bare" [ (message "hi") ]) ]);
-    expectedError = failure "bare: a component is a record, got a list";
+  testUnitsAreRecords = {
+    expr = reports (team { prefix = "hi"; } [ (unit "bare" [ (message "hi") ]) ]);
+    expectedError = failure "bare: a unit is a record, got a list";
   };
 
   testLoadMirrorsTheDirectory =
@@ -1042,13 +1041,13 @@ in
   # An attribute names what its own file defines, and nothing else.
   testLoadRejectsDefinitionsFromAnotherModule = {
     expr = (rhizome.load ../tests/fixtures/broken/shapes { }).borrowed.unit;
-    expectedError = failure "`borrowed.unit` holds the component `elsewhere.unit`, which another module named";
+    expectedError = failure "`borrowed.unit` holds the unit `elsewhere.unit`, which another module named";
   };
 
   # Builders belong to the module that handed them out.
   testLoadRejectsAnotherModulesBuilders = {
     expr = (rhizome.load ../tests/fixtures/broken/shapes { }).smuggled.unit;
-    expectedError = failure "`smuggled.unit` holds a component made with another module's builders";
+    expectedError = failure "`smuggled.unit` holds a unit made with another module's builders";
   };
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {

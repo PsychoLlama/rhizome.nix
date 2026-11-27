@@ -1,5 +1,5 @@
 {
-  description = "Typed channels for composing Nix configuration";
+  description = "A typed graph layer above the Nix module system";
 
   inputs = {
     systems.url = "github:nix-systems/default";

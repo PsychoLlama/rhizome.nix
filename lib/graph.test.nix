@@ -3,7 +3,7 @@
 let
   inherit (rhizome) graph;
 
-  # Routes hold data, not strings: an address for the channel, and a trail
+  # Routes hold data, not strings: an address for the fact, and a trail
   # for each end.
   named = name: {
     address = rhizome.address.local name;
@@ -15,8 +15,8 @@ let
     label = null;
   });
 
-  route = channel: from: to: {
-    channel = named channel;
+  route = fact: from: to: {
+    fact = named fact;
     from = trail from;
     to = trail to;
     single = false;
@@ -63,8 +63,8 @@ in
     ];
   };
 
-  # Scopes are clusters, nested as the tree is.
-  testDotNestsScopes = {
+  # Instances are clusters, nested as the tree is.
+  testDotNestsInstances = {
     expr = map (text: lib.hasInfix text dot) [
       ''subgraph "cluster root" {''
       ''subgraph "cluster root > team" {''
@@ -84,9 +84,9 @@ in
     expected = true;
   };
 
-  # A scope that writes a value appears as a node in its own cluster, and
+  # An instance that writes a value appears as a node in its own cluster, and
   # single values are dashed.
-  testDotDrawsScopeWritersAndSingleValues = {
+  testDotDrawsInstanceWritersAndSingleValues = {
     expr = map (text: lib.hasInfix text dot) [
       ''"root > team" [label="team", shape=plaintext];''
       ''"root > team" -> "root > team > sender" [label="prefix", style=dashed''
@@ -107,7 +107,7 @@ in
   testStepsShowTheirModuleAndLabel = {
     expr = graph.text [
       {
-        channel = named "name";
+        fact = named "name";
         single = true;
 
         from = [
@@ -122,7 +122,7 @@ in
                 "platform"
                 "host"
               ];
-              name = "scope";
+              name = "instance";
             };
             label = "nas-001";
           }
@@ -132,6 +132,6 @@ in
       }
     ];
 
-    expected = [ "name: root > platform.host.scope[nas-001] -> root" ];
+    expected = [ "name: root > platform.host.instance[nas-001] -> root" ];
   };
 }

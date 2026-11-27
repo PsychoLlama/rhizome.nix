@@ -1,7 +1,7 @@
 /**
-  Merges turn the entries written to a channel into the value its readers
+  Merges turn the entries written to a fact into the value its readers
   receive. An entry is `{ from, value }`, where `from` is the path of the node
-  that emitted it. Every channel names a merge; there is no default.
+  that emitted it. Every fact names a merge; there is no default.
 */
 { lib }:
 

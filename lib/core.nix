@@ -13,7 +13,7 @@ let
 
   /**
     Definitions are told apart by their address and by where they were
-    written. Two channels that happen to share a name stay separate.
+    written. Two facts that happen to share a name stay separate.
 
     The position is read off an attribute of the definition. It is missing
     for code that does not come from a file, and it is shared by definitions
@@ -112,13 +112,13 @@ let
   /**
     A definition that has no name yet. A module's builder returns one, and
     the module names it after the attribute it is exported under. `origin`
-    is the module whose builder made it, or null for a scope, which is made
+    is the module whose builder made it, or null for an instance, which is made
     from a level.
 
     Until then it can be passed around but not used. Reaching one through
     `rec` or a `let`, where a file should go through `self`, is the usual
     way to end up holding one. Using it never throws by itself, because a
-    throw would be swallowed while a component is probed for what it emits.
+    throw would be swallowed while a unit is probed for what it emits.
     Each place a definition lands checks with `named`, and says so there.
 
     # Type
@@ -139,20 +139,20 @@ let
 
         __functor =
           _: value:
-          if what == "channel" then
+          if what == "fact" then
             {
               __emission = self.id;
-              channel = self;
+              fact = self;
               inherit value;
             }
           else
             self;
       }
       // lib.optionalAttrs (what == "level") {
-        scope = scopeOf self;
+        instance = instanceOf self;
       }
-      // lib.optionalAttrs (what == "channel") {
-        # Reading a channel's type needs no name.
+      // lib.optionalAttrs (what == "fact") {
+        # Reading a fact's type needs no name.
         type = types.from (definition.type or types.any);
       }
     );
@@ -208,11 +208,11 @@ let
     builders, and names what is exported after the attribute and the path:
 
         dns = rhizome.module { path = [ "services" "dns" ]; } (module: self: {
-          record = module.channel { … };                            # services.dns.record
-          unit = module.component { config = [ (self.record "…") ]; };
+          record = module.fact { … };                            # services.dns.record
+          unit = module.unit { config = [ (self.record "…") ]; };
         });
 
-    - `module`: the builders `level`, `channel`, `component` and `group`.
+    - `module`: the builders `level`, `fact`, `unit` and `group`.
       There are no others, so nothing is defined outside a module.
     - `self`: what the module exports, named.
 
@@ -245,8 +245,8 @@ let
 
       builders = {
         level = builder "level" nameLevel;
-        channel = builder "channel" nameChannel;
-        component = builder "component" nameComponent;
+        fact = builder "fact" nameFact;
+        unit = builder "unit" nameUnit;
         group = builder "group" nameGroup;
       };
 
@@ -274,17 +274,17 @@ let
     self;
 
   /**
-    A level's `scope`: a builder for one instance of it.
+    A level's `instance`: a builder for one instance of it.
 
     # Type
 
     ```
-    scopeOf :: Level -> Definition -> Pending
+    instanceOf :: Level -> Definition -> Pending
     ```
   */
-  scopeOf =
+  instanceOf =
     level: definition:
-    pending null "scope" definition (address: nameScope address [ level ] definition);
+    pending null "instance" definition (address: nameInstance address [ level ] definition);
 
   /**
     Attributes of a module that are not definitions.
@@ -298,11 +298,11 @@ let
     What a definition can be.
   */
   kinds = [
-    "channel"
-    "component"
+    "fact"
+    "unit"
     "group"
     "level"
-    "scope"
+    "instance"
   ];
 
   /**
@@ -324,20 +324,20 @@ let
     `within` names the level it belongs inside. The outermost levels are
     within `rhizome.root`.
 
-    A scope is one instance of a level, and is made from it:
+    An instance is one instance of a level, and is made from it:
 
-        scope = user.level.scope (cfg: {
+        instance = user.level.instance (cfg: {
           input.name = t.str;
           label = cfg.name;
           config = [ (user.name cfg.name) ];
         });
 
     - `config`: members of its own, alongside the ones it is given.
-    - `input`, `label`: as for a component.
+    - `input`, `label`: as for a unit.
 
-    Several scopes may implement one level: a real host and a test double
-    are both hosts. Call a scope with an attrset to set its input, and with
-    a list to set its members. A member is a component, a group, a scope, a
+    Several instances may implement one level: a real host and a test double
+    are both hosts. Call an instance with an attrset to set its input, and with
+    a list to set its members. A member is a unit, a group, an instance, a
     bare emission, or a list of members.
 
     # Type
@@ -360,56 +360,57 @@ let
       inherit address name within;
       id = identify address "within" definition;
       ancestors = [ within ] ++ within.ancestors;
-      scope = scopeOf self;
+      instance = instanceOf self;
     });
 
   /**
-    A typed place that values are written to and read from.
+    Something units state and other units read, without either naming the
+    other: a host's name, a tag it carries, a module for its config.
 
-        settings = module.channel {
+        settings = module.fact {
           level = level.user;
           type = t.attrs;
           merge = merge.attrs.recursive;
         };
 
-    - `level` bounds it. Everything written inside one scope of that level
-      is merged into one value, visible inside that scope and nowhere else.
-    - `type` checks each value written.
+    - `level` bounds it. Everything stated inside one instance of that level
+      is merged into one value, visible inside that instance and nowhere else.
+    - `type` checks each value stated.
     - `merge` turns the `{ from, value }` entries into the value readers
       receive. `merge.one` makes it a single value, such as a host's name.
-    - `optional` allows what is written to go unread. Without it, a value
+    - `optional` allows what is stated to go unread. Without it, a value
       nobody reads is an error, so nothing is silently dropped.
 
-    Calling a channel with a value makes an emission. Payloads stay lazy.
+    Calling a fact with a value makes an emission. Payloads stay lazy.
 
     # Type
 
     ```
-    nameChannel :: Address -> { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Channel
+    nameFact :: Address -> { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Fact
     ```
   */
-  nameChannel =
+  nameFact =
     address: definition:
     let
       name = display address;
 
       self = {
-        kind = "channel";
+        kind = "fact";
         inherit address name;
         id = identify address "merge" definition;
-        level = named "rhizome: channel `${name}`: `level`" (definition.level or root);
-        merge = definition.merge or (throw "rhizome: channel `${name}` must name a `merge`");
+        level = named "rhizome: fact `${name}`: `level`" (definition.level or root);
+        merge = definition.merge or (throw "rhizome: fact `${name}` must name a `merge`");
         optional = definition.optional or false;
         type = types.from (definition.type or types.any);
 
         __functor = _: value: {
           __emission = self.id;
-          channel = self;
-          value = validate "channel `${name}`" self.type value;
+          fact = self;
+          value = validate "fact `${name}`" self.type value;
         };
       };
     in
-    lib.seq (known "channel `${name}`" [
+    lib.seq (known "fact `${name}`" [
       "level"
       "merge"
       "optional"
@@ -417,29 +418,30 @@ let
     ] definition) self;
 
   /**
-    A leaf of the tree. It reads channels and emits into channels.
+    A leaf of the tree. It reads facts and states others.
 
-        git = module.component {
+        git = module.unit {
           uses = { settings = git.settings; pkgs = host.pkgs; };
           config = { settings, pkgs }: [ (user.file { … }) (user.package pkgs.git) ];
         };
 
-    - `uses`: the channels it reads, each under a local name.
+    - `uses`: the facts it reads, each under a local name.
     - `config`: its emissions, or a function from what it uses to them.
       Lists may nest, so a helper can return several emissions.
-    - `emits`: the channels `config` emits into. Only needed when the list
-      itself, not just its payloads, depends on what the component uses.
-    - `input`, `label`: typed input and a name for the instance. The
-      definition is then a function of that input: `cfg: { … }`.
+    - `emits`: the facts `config` emits into. Only needed when the list
+      itself, not just its payloads, depends on what the unit uses.
+    - `input`, `label`: typed input, and a label to tell one use of the
+      unit from another. The definition is then a function of that input:
+      `cfg: { … }`.
 
     # Type
 
     ```
-    nameComponent :: Address -> Definition -> Component
+    nameUnit :: Address -> Definition -> Unit
     ```
   */
-  nameComponent = address: definition: {
-    kind = "component";
+  nameUnit = address: definition: {
+    kind = "unit";
     inherit address definition;
     name = display address;
     input = { };
@@ -455,10 +457,10 @@ let
         });
 
     - `config`: its members.
-    - `input`, `label`: as for a component.
+    - `input`, `label`: as for a unit.
 
-    A group reads nothing, so what it holds can never depend on a channel.
-    It leaves no trace in the tree: its members belong to the scope the
+    A group reads nothing, so what it holds can never depend on a fact.
+    It leaves no trace in the tree: its members belong to the instance the
     group sits in, and one that two groups name is still included once.
 
     # Type
@@ -477,16 +479,16 @@ let
 
   /**
     A branch of the tree: one instance of the levels it starts. Made with
-    `level.scope`.
+    `level.instance`.
 
     # Type
 
     ```
-    nameScope :: Address -> [Level] -> Definition -> Scope
+    nameInstance :: Address -> [Level] -> Definition -> Instance
     ```
   */
-  nameScope = address: levels: definition: {
-    kind = "scope";
+  nameInstance = address: levels: definition: {
+    kind = "instance";
     inherit address levels definition;
     name = display address;
     input = { };
@@ -496,12 +498,12 @@ let
   };
 
   /**
-    Members, with a component or group that several lists name kept once.
+    Members, with a unit or group that several lists name kept once.
     Two profiles may both include a program, and it is still one program.
 
     Given input, it is the same member when its input is equal too.
 
-    Two components are equal only when they are one definition: each holds
+    Two units are equal only when they are one definition: each holds
     functions, and a function equals nothing but itself. For the same
     reason, input holding a function makes an instance of its own.
 
@@ -518,7 +520,7 @@ let
         state: member:
         if
           !lib.elem (member.kind or null) [
-            "component"
+            "unit"
             "group"
           ]
         then
@@ -539,7 +541,7 @@ let
     ).kept;
 
   /**
-    The members of a scope, with every group replaced by what it holds.
+    The members of an instance, with every group replaced by what it holds.
 
     # Type
 
@@ -571,22 +573,22 @@ let
     );
 
   /**
-    A member that reads a channel and discards it.
+    A member that reads a fact and discards it.
 
     # Type
 
     ```
-    ignore :: Channel -> Component
+    ignore :: Fact -> Unit
     ```
   */
   ignore =
-    channel:
-    nameComponent (locally "ignore `${(named "rhizome: `ignore`" channel).name}`") {
-      uses.ignored = channel;
+    fact:
+    nameUnit (locally "ignore `${(named "rhizome: `ignore`" fact).name}`") {
+      uses.ignored = fact;
     };
 
   /**
-    Whether a channel, or a level, is among others. Compared by id.
+    Whether a fact, or a level, is among others. Compared by id.
 
     # Type
 
@@ -594,18 +596,18 @@ let
     has :: { id :: String } -> [{ id :: String }] -> Bool
     ```
   */
-  has = channel: lib.any (other: other.id == channel.id);
+  has = fact: lib.any (other: other.id == fact.id);
 
   /**
-    Channels with duplicates removed, by id.
+    Facts with duplicates removed, by id.
 
     # Type
 
     ```
-    distinct :: [Channel] -> [Channel]
+    distinct :: [Fact] -> [Fact]
     ```
   */
-  distinct = channels: lib.attrValues (lib.listToAttrs (map (c: lib.nameValuePair c.id c) channels));
+  distinct = facts: lib.attrValues (lib.listToAttrs (map (c: lib.nameValuePair c.id c) facts));
 
   /**
     The trail to a node: the one it sits under, then a step of its own.
@@ -631,29 +633,29 @@ let
     ];
 
   /**
-    Whether a channel's level has been started around here. Throws, naming
+    Whether a fact's level has been started around here. Throws, naming
     the node, when it has not.
 
     # Type
 
     ```
-    outside :: Context -> String -> String -> Channel -> Bool
+    outside :: Context -> String -> String -> Fact -> Bool
     ```
   */
   outside =
-    context: where: verb: channel:
-    context.pools ? ${channel.level.id}
-    || throw "rhizome: ${where}: ${verb} `${channel.name}` outside a `${channel.level.name}` scope";
+    context: where: verb: fact:
+    context.pools ? ${fact.level.id}
+    || throw "rhizome: ${where}: ${verb} `${fact.name}` outside a `${fact.level.name}` instance";
 
   /**
-    Reject declarations that form a loop: a component that uses A and emits
-    into B makes B depend on A. Dependency is tracked per component, so one
+    Reject declarations that form a loop: a unit that uses A and emits
+    into B makes B depend on A. Dependency is tracked per unit, so one
     that uses A makes everything it emits depend on A.
 
     # Type
 
     ```
-    checkOrder :: [{ from :: Channel, to :: Channel, where :: String }] -> Bool
+    checkOrder :: [{ from :: Fact, to :: Fact, where :: String }] -> Bool
     ```
   */
   checkOrder =
@@ -677,14 +679,14 @@ let
     in
     looping == [ ]
     || throw ''
-      rhizome: channels form a cycle:
+      rhizome: facts form a cycle:
       ${lib.concatMapStringsSep "\n" (
         edge: "  ${edge.from.name} -> ${edge.to.name}, in ${edge.where}"
       ) looping}
-      A component that uses a channel makes everything it emits depend on it. If only part of one does, split it.'';
+      A unit that uses a fact makes everything it emits depend on it. If only part of one does, split it.'';
 
   /**
-    A bare emission in a member list: written by the scope it sits in.
+    A bare emission in a member list: written by the instance it sits in.
 
     # Type
 
@@ -696,11 +698,11 @@ let
     context: emission:
     let
       where = show context.path;
-      channel = named "rhizome: ${where}: emits" emission.channel;
+      fact = named "rhizome: ${where}: emits" emission.fact;
     in
     {
-      table.${channel.id} = {
-        inherit channel;
+      table.${fact.id} = {
+        inherit fact;
         entries = [
           {
             inherit (emission) value;
@@ -712,25 +714,25 @@ let
       readers = [ ];
       order = [ ];
       routes = [ ];
-      check = outside context where "emits" channel;
+      check = outside context where "emits" fact;
     };
 
   /**
-    A component: what it reads, what it emits, and the checks on both.
+    A unit: what it reads, what it emits, and the checks on both.
 
     # Type
 
     ```
-    evaluateComponent :: Context -> Component -> Evaluated
+    evaluateUnit :: Context -> Unit -> Evaluated
     ```
   */
-  evaluateComponent =
+  evaluateUnit =
     context: node:
     let
       path = locate context node;
       where = show path;
 
-      declared = record where "component" (declarations node.name node.definition);
+      declared = record where "unit" (declarations node.name node.definition);
       uses = lib.mapAttrs (local: named "rhizome: ${where}: uses `${local}`") (declared.uses or { });
 
       input = validate "${where}: input" (types.from (declared.input or { })) node.input;
@@ -750,21 +752,21 @@ let
             config (lib.intersectAttrs formals values)
         );
 
-      channelOf =
-        emission: emission.channel or (throw "rhizome: ${where}: `config` must be a list of emissions");
+      factOf =
+        emission: emission.fact or (throw "rhizome: ${where}: `config` must be a list of emissions");
 
       # What each local name in `uses` resolves to. Lazy: nothing is merged
       # until `config` reads it.
-      used = lib.mapAttrs (_: channel: context.pools.${channel.level.id} channel) uses;
+      used = lib.mapAttrs (_: fact: context.pools.${fact.level.id} fact) uses;
 
-      # Which channels `config` emits into, found without reading anything:
+      # Which facts `config` emits into, found without reading anything:
       # it is run with values that throw. That works whenever only the
-      # payloads, not the list, depend on what the component uses.
+      # payloads, not the list, depend on what the unit uses.
       probe = builtins.tryEval (
         let
-          channels = map channelOf (run (lib.mapAttrs (_: _: throw "rhizome: read during probe") uses));
+          facts = map factOf (run (lib.mapAttrs (_: _: throw "rhizome: read during probe") uses));
         in
-        lib.deepSeq (map (c: c.id) channels) channels
+        lib.deepSeq (map (c: c.id) facts) facts
       );
 
       emits = map (named "rhizome: ${where}: emits") found;
@@ -783,39 +785,39 @@ let
       emissions = map (
         emission:
         let
-          channel = channelOf emission;
+          fact = factOf emission;
         in
-        if !has channel emits then
-          throw "rhizome: ${where}: emits `${channel.name}` without declaring it in `emits`"
+        if !has fact emits then
+          throw "rhizome: ${where}: emits `${fact.name}` without declaring it in `emits`"
         else
           {
-            inherit channel path;
+            inherit fact path;
             inherit (emission) value;
           }
       ) (run used);
     in
     {
-      # Keyed by channel, so only components that emit into a channel are
-      # asked for it, and one whose list depends on a channel never waits on
+      # Keyed by fact, so only units that emit into a fact are
+      # asked for it, and one whose list depends on a fact never waits on
       # itself.
       table = lib.listToAttrs (
         map (
-          channel:
-          lib.nameValuePair channel.id {
-            inherit channel;
+          fact:
+          lib.nameValuePair fact.id {
+            inherit fact;
             entries = map (emission: { inherit (emission) path value; }) (
-              lib.filter (emission: emission.channel.id == channel.id) emissions
+              lib.filter (emission: emission.fact.id == fact.id) emissions
             );
           }
         ) emits
       );
 
-      readers = map (channel: { inherit channel path where; }) (lib.attrValues uses);
+      readers = map (fact: { inherit fact path where; }) (lib.attrValues uses);
 
       order = lib.concatMap (from: map (to: { inherit from to where; }) emits) (lib.attrValues uses);
       routes = [ ];
 
-      # Forces every check and each emission's channel, never a payload.
+      # Forces every check and each emission's fact, never a payload.
       check =
         known where [
           "config"
@@ -826,26 +828,26 @@ let
         ] declared
         && lib.all (outside context where "uses") (lib.attrValues uses)
         && lib.all (outside context where "emits") emits
-        && lib.all (emission: emission ? channel) emissions;
+        && lib.all (emission: emission ? fact) emissions;
     };
 
   /**
-    A scope: its members, the pool of what they wrote for the levels it
-    starts, and what passes through to the scopes above.
+    An instance: its members, the pool of what they wrote for the levels it
+    starts, and what passes through to the instances above.
 
     # Type
 
     ```
-    evaluateScope :: Context -> Scope -> Evaluated
+    evaluateInstance :: Context -> Instance -> Evaluated
     ```
   */
-  evaluateScope =
+  evaluateInstance =
     context: node:
     let
       path = locate context node;
       where = show path;
 
-      declared = record where "scope" (declarations node.name node.definition);
+      declared = record where "instance" (declarations node.name node.definition);
       levels = map (named "rhizome: ${where}: level") node.levels;
       here = level: lib.any (started: started.id == level.id) levels;
 
@@ -862,10 +864,10 @@ let
       );
 
       # A merge is given where each value came from as errors spell it.
-      slot = channel: entries: {
-        inherit channel entries;
+      slot = fact: entries: {
+        inherit fact entries;
 
-        value = channel.merge (
+        value = fact.merge (
           map (entry: {
             from = show entry.path;
             inherit (entry) value;
@@ -873,53 +875,50 @@ let
         );
       };
 
-      # Everything written inside this scope, keyed by channel. Each channel
+      # Everything written inside this instance, keyed by fact. Each fact
       # is gathered and merged once, however many readers it has.
       pool = lib.zipAttrsWith (
-        _: tables: slot (lib.head tables).channel (lib.concatMap (table: table.entries) tables)
+        _: tables: slot (lib.head tables).fact (lib.concatMap (table: table.entries) tables)
       ) (map (member: member.table) members);
 
-      entries = channel: (pool.${channel.id} or { entries = [ ]; }).entries;
-      read = channel: (pool.${channel.id} or (slot channel [ ])).value;
+      entries = fact: (pool.${fact.id} or { entries = [ ]; }).entries;
+      read = fact: (pool.${fact.id} or (slot fact [ ])).value;
 
-      single = channel: channel.merge ? expects;
+      single = fact: fact.merge ? expects;
 
       allReaders = lib.concatMap (member: member.readers) members;
-      readers = lib.filter (reader: here reader.channel.level) allReaders;
-      isRead = lib.listToAttrs (map (reader: lib.nameValuePair reader.channel.id true) readers);
+      readers = lib.filter (reader: here reader.fact.level) allReaders;
+      isRead = lib.listToAttrs (map (reader: lib.nameValuePair reader.fact.id true) readers);
 
       # A level cannot start inside a level that belongs inside it.
       inverted = lib.findFirst (
         outer: lib.any (level: has level outer.ancestors) levels
       ) null context.levels;
 
-      # Values written for nobody are an error, unless the channel says they
+      # Values written for nobody are an error, unless the fact says they
       # are optional. Whoever evaluates the tree reads from the root, so
       # nothing there is unread.
       unread = lib.findFirst (
         slot:
-        here slot.channel.level
-        && !slot.channel.optional
-        && !(isRead ? ${slot.channel.id})
-        && slot.entries != [ ]
+        here slot.fact.level && !slot.fact.optional && !(isRead ? ${slot.fact.id}) && slot.entries != [ ]
       ) null (lib.optionals (!here root) (lib.attrValues pool));
 
-      # A channel holding a single value takes one writer, or one at most.
+      # A fact holding a single value takes one writer, or one at most.
       miscounted = lib.findFirst (
         reader:
         let
-          count = lib.length (entries reader.channel);
-          inherit (reader.channel.merge) expects;
+          count = lib.length (entries reader.fact);
+          inherit (reader.fact.merge) expects;
         in
-        single reader.channel && (count < expects.least || count > expects.most)
+        single reader.fact && (count < expects.least || count > expects.most)
       ) null readers;
     in
     {
       inherit pool read;
 
-      # What passes through to the scopes above.
-      table = lib.filterAttrs (_: slot: !here slot.channel.level) pool;
-      readers = lib.filter (reader: !here reader.channel.level) allReaders;
+      # What passes through to the instances above.
+      table = lib.filterAttrs (_: slot: !here slot.fact.level) pool;
+      readers = lib.filter (reader: !here reader.fact.level) allReaders;
 
       order = lib.concatMap (member: member.order) members;
 
@@ -928,11 +927,11 @@ let
         ++ lib.concatMap (
           reader:
           map (entry: {
-            channel = { inherit (reader.channel) address name; };
-            single = single reader.channel;
+            fact = { inherit (reader.fact) address name; };
+            single = single reader.fact;
             from = entry.path;
             to = reader.path;
-          }) (entries reader.channel)
+          }) (entries reader.fact)
         ) readers;
 
       check =
@@ -950,13 +949,13 @@ let
         && lib.all (member: member.check) members
         && (
           unread == null
-          || throw "rhizome: ${show (lib.head unread.entries).path}: emits `${unread.channel.name}`, which nothing in ${where} uses"
+          || throw "rhizome: ${show (lib.head unread.entries).path}: emits `${unread.fact.name}`, which nothing in ${where} uses"
         )
         && (
           miscounted == null
-          || throw "rhizome: ${miscounted.where}: uses `${miscounted.channel.name}`, which ${
+          || throw "rhizome: ${miscounted.where}: uses `${miscounted.fact.name}`, which ${
             let
-              found = entries miscounted.channel;
+              found = entries miscounted.fact;
             in
             if found == [ ] then
               "nothing in ${where} provides"
@@ -984,31 +983,31 @@ let
     in
     if node ? __emission then
       evaluateEmission context node
-    else if (node.kind or null) == "scope" then
-      evaluateScope context node
-    else if (node.kind or null) == "component" then
-      evaluateComponent context node
+    else if (node.kind or null) == "instance" then
+      evaluateInstance context node
+    else if (node.kind or null) == "unit" then
+      evaluateUnit context node
     else
-      throw "rhizome: ${show context.path}: a member must be a component, a group, a scope, or an emission, got ${
+      throw "rhizome: ${show context.path}: a member must be a unit, a group, an instance, or an emission, got ${
         if (node.kind or null) != null then "a ${node.kind}" else builtins.typeOf node
       }";
 
   /**
     Evaluate a tree, or a list of members. The caller stands at the root and
-    reads from it: `collect channel` returns the channel's merged value.
+    reads from it: `collect fact` returns the fact's merged value.
 
     The whole tree is checked before anything is returned: inputs,
     declarations, nesting, cycles, that everything used is provided and that
     everything emitted is used. Payloads stay lazy, so a host that is never
     built costs only its structure.
 
-    `levels` lets the caller stand in for the scopes a member would normally
+    `levels` lets the caller stand in for the instances a member would normally
     sit inside, to run it on its own.
 
     # Type
 
     ```
-    eval :: { levels? :: [Level] } -> Node | [Node] -> { collect :: Channel -> Any, routes :: [Route] }
+    eval :: { levels? :: [Level] } -> Node | [Node] -> { collect :: Fact -> Any, routes :: [Route] }
     ```
   */
   eval =
@@ -1018,9 +1017,9 @@ let
     tree:
     let
       reachable = [ root ] ++ levels;
-      top = nameScope (locally "root") reachable { } (lib.toList tree);
+      top = nameInstance (locally "root") reachable { } (lib.toList tree);
 
-      result = evaluateScope {
+      result = evaluateInstance {
         path = [ ];
         levels = [ ];
         pools = { };
@@ -1030,17 +1029,17 @@ let
     in
     lib.seq checked {
       collect =
-        channel:
-        if !has (named "rhizome: `collect`" channel).level reachable then
-          throw "rhizome: `${channel.name}` is bounded by `${channel.level.name}` and never reaches the root"
+        fact:
+        if !has (named "rhizome: `collect`" fact).level reachable then
+          throw "rhizome: `${fact.name}` is bounded by `${fact.level.name}` and never reaches the root"
         else
-          result.read channel;
+          result.read fact;
 
       /**
-        Who talks to whom: one `{ channel, from, to, single }` per value
+        Who talks to whom: one `{ fact, from, to, single }` per value
         that reaches a reader. What reaches the root is read by the caller.
 
-        Nothing here is rendered. `channel` is `{ address, name }`, and
+        Nothing here is rendered. `fact` is `{ address, name }`, and
         `from` and `to` are trails: see `rhizome.address`. `rhizome.graph`
         draws them.
       */
@@ -1049,12 +1048,12 @@ let
         ++ lib.concatMap (
           slot:
           map (entry: {
-            channel = { inherit (slot.channel) address name; };
-            single = slot.channel.merge ? expects;
+            fact = { inherit (slot.fact) address name; };
+            single = slot.fact.merge ? expects;
             from = entry.path;
             to = locate { path = [ ]; } top;
           }) slot.entries
-        ) (lib.filter (slot: slot.channel.level.id == root.id) (lib.attrValues result.pool));
+        ) (lib.filter (slot: slot.fact.level.id == root.id) (lib.attrValues result.pool));
     };
 in
 

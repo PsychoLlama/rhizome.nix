@@ -16,8 +16,8 @@ let
   join = address.show-trail;
 
   /**
-    What a node or a scope is labelled with: its own step, without the
-    scopes above it.
+    What a node or an instance is labelled with: its own step, without the
+    instances above it.
 
     # Type
 
@@ -51,12 +51,12 @@ in
   */
   text =
     routes:
-    lib.unique (map (route: "${route.channel.name}: ${join route.from} -> ${join route.to}") routes);
+    lib.unique (map (route: "${route.fact.name}: ${join route.from} -> ${join route.to}") routes);
 
   /**
-    A Graphviz graph. Scopes are boxes, nodes are components, and an edge is
-    labelled with the channels that flow along it. Single values, such as a
-    host's name, are dashed. A scope that writes a value itself appears as a
+    A Graphviz graph. Instances are boxes, nodes are units, and an edge is
+    labelled with the facts that flow along it. Single values, such as a
+    host's name, are dashed. An instance that writes a value itself appears as a
     node inside its own box.
 
     # Type
@@ -81,12 +81,12 @@ in
         )
       );
 
-      # Every proper prefix of a node's path is a scope.
-      scopes = lib.unique (
+      # Every proper prefix of a node's path is an instance.
+      instances = lib.unique (
         lib.concatMap (path: map (count: lib.take count path) (lib.range 1 (lib.length path - 1))) paths
       );
 
-      isScope = path: lib.elem path scopes;
+      isInstance = path: lib.elem path instances;
       within = parent: path: lib.init path == parent;
 
       node = path: style: "${quote (join path)} [label=${quote (label path)}${style}];";
@@ -100,9 +100,9 @@ in
           ]
           ++ lib.optional (lib.elem path paths) "${indent}  ${node path ", shape=plaintext"}"
           ++ map (path: "${indent}  ${node path ""}") (
-            lib.filter (child: within path child && !isScope child) paths
+            lib.filter (child: within path child && !isInstance child) paths
           )
-          ++ map (cluster "${indent}  ") (lib.filter (within path) scopes)
+          ++ map (cluster "${indent}  ") (lib.filter (within path) instances)
           ++ [ "${indent}}" ]
         );
 
@@ -111,9 +111,9 @@ in
         _: group:
         let
           inherit (lib.head group) from to single;
-          channels = lib.concatStringsSep "\\n" (lib.unique (map (route: route.channel.name) group));
+          facts = lib.concatStringsSep "\\n" (lib.unique (map (route: route.fact.name) group));
         in
-        "  ${quote (join from)} -> ${quote (join to)} [label=\"${channels}\"${lib.optionalString single ", style=dashed, color=gray50, fontcolor=gray50"}];"
+        "  ${quote (join from)} -> ${quote (join to)} [label=\"${facts}\"${lib.optionalString single ", style=dashed, color=gray50, fontcolor=gray50"}];"
       ) (lib.groupBy (route: "${join route.from}\n${join route.to}\n${toString route.single}") routes);
     in
     lib.concatStringsSep "\n" (
@@ -124,7 +124,7 @@ in
         "  edge [fontname=\"sans-serif\", fontsize=10];"
         "  graph [fontname=\"sans-serif\", style=rounded, color=gray60];"
       ]
-      ++ map (cluster "  ") (lib.filter (path: lib.length path == 1) scopes)
+      ++ map (cluster "  ") (lib.filter (path: lib.length path == 1) instances)
       ++ edges
       ++ [
         "}"

@@ -11,7 +11,7 @@
   - `rhizome`: the library.
   - `units`: the whole tree, so any unit can reach any other.
   - `self`: what this file returns, with its definitions named.
-  - `module`: the builders `level`, `channel`, `component` and `group`.
+  - `module`: the builders `level`, `fact`, `unit` and `group`.
 
   A file returns an attrset. Each attribute is a definition, and takes its
   name from the attribute and the file's path: `topic` in
