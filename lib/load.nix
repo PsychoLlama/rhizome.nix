@@ -13,6 +13,8 @@
   - `self`: what this file returns.
   - `module`: the builders, naming what they make after this file's path.
     In `services/ntfy.nix`, `module.channel "topic"` is `services.ntfy.topic`.
+    The directory being loaded is the namespace, so the same path in
+    another project is a different definition.
 
   A file returns an attrset. Each attribute is a definition made with
   `module` under the attribute's own name, except two that pass through
@@ -36,6 +38,10 @@ rhizome: root: args:
 
 let
   units = directory root [ ];
+
+  # Stands for this tree among others. Inside a flake it is a store path,
+  # so it changes with the source.
+  namespace = toString root;
 
   reserved = [
     "lib"
@@ -71,13 +77,21 @@ let
         attribute: value:
         let
           expected = show (segments ++ [ attribute ]);
+
+          address = {
+            inherit namespace;
+            path = segments;
+            name = attribute;
+          };
         in
         if lib.elem attribute reserved then
           value
         else if !(lib.isAttrs value && lib.elem (value.kind or null) kinds) then
           throw "rhizome: `${expected}` is not a definition. Functions belong in `lib` and constants in `values`"
-        else if value.name != expected then
-          throw "rhizome: `${expected}` holds a ${value.kind} named `${value.name}`. Name it after its attribute"
+        else if value.address != address then
+          throw "rhizome: `${expected}` holds a ${value.kind} named `${value.name}`${
+            lib.optionalString (value.address.namespace != namespace) ", made by another module"
+          }. Make it with this file's `module`, under the attribute's name"
         else
           value
       ) exports;
@@ -90,7 +104,10 @@ let
           args
           // {
             inherit rhizome units self;
-            module = rhizome.module (show segments);
+            module = rhizome.module {
+              inherit namespace;
+              path = segments;
+            };
           }
         )
       );

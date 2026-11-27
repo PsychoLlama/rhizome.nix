@@ -7,22 +7,62 @@ let
   inherit (types) validate;
 
   /**
-    Definitions are told apart by where they were written, not only by what
-    they were named. Two channels that happen to share a name stay separate.
+    Where a definition lives: `{ namespace, path, name }`.
 
-    The position is read off an attribute of the definition. It is missing
-    for code that does not come from a file, and it is shared by definitions
-    made in one place by a helper function, so the name is always part of it.
+    - `namespace`: the tree it was loaded from, or null. Two projects may
+      each have a `services.dns.record`, and they are not the same one.
+    - `path`: the module it is in, as a list: `[ "services" "dns" ]`.
+    - `name`: what the module calls it.
+
+    Kept apart so each reader can render it to suit: an error, a graph, a
+    page of documentation.
 
     # Type
 
     ```
-    identify :: String -> String -> Any -> String
+    locally :: String -> Address
+    ```
+  */
+  locally = name: {
+    namespace = null;
+    path = [ ];
+    inherit name;
+  };
+
+  /**
+    An address as one name: `services.dns.record`. It is what you would
+    write after `units.` to reach the definition, so the namespace is left
+    out.
+
+    # Type
+
+    ```
+    display :: Address -> String
+    ```
+  */
+  display = address: lib.concatStringsSep "." (address.path ++ [ address.name ]);
+
+  /**
+    Definitions are told apart by their address and by where they were
+    written. Two channels that happen to share a name stay separate.
+
+    The position is read off an attribute of the definition. It is missing
+    for code that does not come from a file, and it is shared by definitions
+    made in one place by a helper function, so the address is always part
+    of it.
+
+    # Type
+
+    ```
+    identify :: Address -> String -> Any -> String
     ```
   */
   identify =
-    name: attribute: record:
+    address: attribute: record:
     let
+      name =
+        lib.optionalString (address.namespace != null) "${toString address.namespace}:" + display address;
+
       position =
         if lib.isAttrs record && record ? ${attribute} then lib.unsafeGetAttrPos attribute record else null;
     in
@@ -103,29 +143,31 @@ let
   /**
     A module: the builders for definitions that live at one path.
 
-        module = rhizome.module "services.dns";
+        module = rhizome.module { path = [ "services" "dns" ]; };
         record = module.channel "record" { … };    # services.dns.record
 
     A definition is named when it is made, so there is no such thing as one
     without a name. `rhizome.load` hands every file the module for its own
     path, and checks each definition against the attribute it is under.
 
-    The path is the one a definition is reached by, so a name in an error
-    is what you would write after `units.` to find it.
+    Every definition carries its `address`, and a `name` rendered from it.
 
     # Type
 
     ```
-    module :: String -> { path :: String, level, channel, component, group :: String -> Definition -> Node }
+    module :: { namespace? :: Any, path? :: [String] } -> Module
     ```
   */
   module =
-    path:
+    {
+      namespace ? null,
+      path ? [ ],
+    }:
     let
-      under = build: name: build (qualify path name);
+      under = build: name: build { inherit namespace path name; };
     in
     {
-      inherit path;
+      inherit namespace path;
       level = under nameLevel;
       channel = under nameChannel;
       component = under nameComponent;
@@ -133,22 +175,11 @@ let
     };
 
   /**
-    A definition's full name: where its module is, then what it is called
-    there.
-
-    # Type
-
-    ```
-    qualify :: String -> String -> String
-    ```
-  */
-  qualify = path: name: if path == "" then name else "${path}.${name}";
-
-  /**
     The outermost level: whoever evaluates the tree.
   */
   root = {
     kind = "level";
+    address = locally "root";
     name = "root";
     id = "root";
     ancestors = [ ];
@@ -182,22 +213,28 @@ let
     # Type
 
     ```
-    nameLevel :: String -> { within :: Level } -> Level
+    nameLevel :: Address -> { within :: Level } -> Level
     ```
   */
   nameLevel =
-    name: definition:
+    address: definition:
     let
+      name = display address;
       within =
         definition.within
           or (throw "rhizome: level `${name}` must say what it is `within`; the outermost is `rhizome.root`");
     in
     lib.fix (self: {
       kind = "level";
-      inherit name within;
-      id = identify name "within" definition;
+      inherit address name within;
+      id = identify address "within" definition;
       ancestors = [ within ] ++ within.ancestors;
-      scope = module: name: nameScope (qualify module.path name) [ self ];
+      scope =
+        module: name:
+        nameScope {
+          inherit (module) namespace path;
+          inherit name;
+        } [ self ];
     });
 
   /**
@@ -222,16 +259,18 @@ let
     # Type
 
     ```
-    nameChannel :: String -> { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Channel
+    nameChannel :: Address -> { level? :: Level, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Channel
     ```
   */
   nameChannel =
-    name: definition:
+    address: definition:
     let
+      name = display address;
+
       self = {
         kind = "channel";
-        inherit name;
-        id = identify name "merge" definition;
+        inherit address name;
+        id = identify address "merge" definition;
         level = definition.level or root;
         merge = definition.merge or (throw "rhizome: channel `${name}` must name a `merge`");
         optional = definition.optional or false;
@@ -270,12 +309,13 @@ let
     # Type
 
     ```
-    nameComponent :: String -> Definition -> Component
+    nameComponent :: Address -> Definition -> Component
     ```
   */
-  nameComponent = name: definition: {
+  nameComponent = address: definition: {
     kind = "component";
-    inherit name definition;
+    inherit address definition;
+    name = display address;
     input = { };
     __functor = self: input: self // { inherit input; };
   };
@@ -298,12 +338,13 @@ let
     # Type
 
     ```
-    nameGroup :: String -> Definition -> Group
+    nameGroup :: Address -> Definition -> Group
     ```
   */
-  nameGroup = name: definition: {
+  nameGroup = address: definition: {
     kind = "group";
-    inherit name definition;
+    inherit address definition;
+    name = display address;
     input = { };
     __functor = self: input: self // { inherit input; };
   };
@@ -315,12 +356,13 @@ let
     # Type
 
     ```
-    nameScope :: String -> [Level] -> Definition -> Scope
+    nameScope :: Address -> [Level] -> Definition -> Scope
     ```
   */
-  nameScope = name: levels: definition: {
+  nameScope = address: levels: definition: {
     kind = "scope";
-    inherit name levels definition;
+    inherit address levels definition;
+    name = display address;
     input = { };
     members = [ ];
     __functor =
@@ -411,7 +453,7 @@ let
     ignore :: Channel -> Component
     ```
   */
-  ignore = channel: nameComponent "ignore `${channel.name}`" { uses.ignored = channel; };
+  ignore = channel: nameComponent (locally "ignore `${channel.name}`") { uses.ignored = channel; };
 
   /**
     A path as it appears in errors and routes.
@@ -842,7 +884,7 @@ let
     tree:
     let
       reachable = [ root ] ++ levels;
-      top = nameScope "root" reachable { } (lib.toList tree);
+      top = nameScope (locally "root") reachable { } (lib.toList tree);
 
       result = evaluateScope {
         path = [ ];

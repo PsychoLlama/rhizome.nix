@@ -4,7 +4,7 @@ let
   t = rhizome.types;
   inherit (rhizome) merge;
 
-  module = rhizome.module "";
+  module = rhizome.module { };
 
   inherit (module)
     level
@@ -710,7 +710,12 @@ in
   # Builders name what they make under a prefix.
   testDefinitionsAreNamedUnderAPrefix =
     let
-      mail = rhizome.module "services.mail";
+      mail = rhizome.module {
+        path = [
+          "services"
+          "mail"
+        ];
+      };
     in
     {
       expr = [
@@ -728,6 +733,55 @@ in
         "services.mail.office"
         "services.mail.floor"
       ];
+    };
+
+  # The name is only one way to show an address.
+  testDefinitionsCarryTheirAddress = {
+    expr =
+      (
+        (rhizome.module {
+          namespace = "lab";
+          path = [
+            "services"
+            "mail"
+          ];
+        }).channel
+          "letter"
+          { merge = merge.list; }
+      ).address;
+
+    expected = {
+      namespace = "lab";
+      path = [
+        "services"
+        "mail"
+      ];
+      name = "letter";
+    };
+  };
+
+  # Two projects may use one path. Their definitions stay apart.
+  testNamespacesKeepDefinitionsApart =
+    let
+      letter =
+        namespace:
+        (rhizome.module { inherit namespace; }).channel "letter" {
+          type = t.str;
+          merge = merge.list;
+        };
+
+      ours = letter "ours";
+      theirs = letter "theirs";
+    in
+    {
+      expr =
+        (rhizome.eval { } [
+          (ours "dear")
+          (theirs "hello")
+        ]).collect
+          ours;
+
+      expected = [ "dear" ];
     };
 
   # A group passes typed input on to its members.
@@ -818,6 +872,8 @@ in
         inherit (units.programs.values) shared;
         shout = units.programs.greeter.lib.shout "hi";
         named = units.programs.greeter.hello.name;
+        path = units.programs.greeter.hello.address.path;
+        namespace = units.programs.greeter.hello.address.namespace == toString ../tests/fixtures/units;
 
         # Files receive the arguments, and reach each other through `units`.
         said = (rhizome.eval { } units.programs.greeter.unit).collect units.platform.said;
@@ -835,6 +891,11 @@ in
         shared = "beside the files";
         shout = "hi!";
         named = "programs.greeter.hello";
+        path = [
+          "programs"
+          "greeter"
+        ];
+        namespace = true;
         said = [ "hello" ];
       };
     };
@@ -848,6 +909,12 @@ in
   testLoadRejectsMisnamedDefinitions = {
     expr = (rhizome.load ../tests/fixtures/broken/shapes { }).misnamed.unit;
     expectedError = failure "`misnamed.unit` holds a component named `misnamed.main`";
+  };
+
+  # The right name is not enough: it must come from this file's module.
+  testLoadRejectsDefinitionsFromAnotherModule = {
+    expr = (rhizome.load ../tests/fixtures/broken/shapes { }).borrowed.unit;
+    expectedError = failure "`borrowed.unit` holds a component named `borrowed.unit`, made by another module";
   };
 
   testLoadRejectsLooseValues = {
