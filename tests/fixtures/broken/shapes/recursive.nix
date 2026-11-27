@@ -1,10 +1,13 @@
 { rhizome, define, ... }:
 
 rec {
-  letter = define.fact {
-    type = rhizome.types.str;
-    merge = rhizome.merge.list;
-  };
+  letter = define.fact (
+    { many, as, ... }:
+    {
+      type = rhizome.types.str;
+      holds = many as.list;
+    }
+  );
 
   unit = define.unit { provides = [ (letter "dear") ]; };
 }

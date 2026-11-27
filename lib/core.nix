@@ -2,6 +2,7 @@
   lib,
   address,
   types,
+  holds,
 }:
 
 let
@@ -137,7 +138,7 @@ let
         kind = "pending";
         id = "pending";
         inherit origin what build;
-        source = written definition;
+        source = written what definition;
 
         each = value: {
           __emission = self.id;
@@ -162,7 +163,7 @@ let
       }
       // lib.optionalAttrs (what == "fact") {
         # Reading a fact's type needs no name.
-        type = types.from (definition.type or types.any);
+        type = types.from ((factRecord definition).type or types.any);
       }
     );
 
@@ -173,15 +174,21 @@ let
     # Type
 
     ```
-    written :: Definition -> String | Null
+    written :: String -> Definition -> String | Null
     ```
   */
   written =
-    definition:
+    what: definition:
     let
       found = builtins.tryEval (
         let
-          record = if lib.isFunction definition then definition (throw "input") else definition;
+          record =
+            if what == "fact" then
+              factRecord definition
+            else if lib.isFunction definition then
+              definition (throw "input")
+            else
+              definition;
 
           positions = lib.filter (position: position != null) (
             map (attribute: lib.unsafeGetAttrPos attribute record) (lib.attrNames record)
@@ -376,41 +383,70 @@ let
     Something units state and other units read, without either naming the
     other: a host's name, a tag it carries, a module for its config.
 
-        settings = define.fact {
-          scope = scope.user;
+        settings = define.fact ({ many, as, ... }: {
+          scope = user.scope;
           type = t.attrs;
-          merge = merge.attrs.recursive;
-        };
+          holds = many as.attrs;
+        });
 
     - `scope` bounds it. Everything stated inside one instance of that scope
-      is merged into one value, visible inside that instance and nowhere else.
+      reaches the readers inside that instance and nowhere else.
     - `type` checks each value stated.
-    - `merge` turns the `{ from, value }` entries into the value readers
-      receive. `merge.one` makes it a single value, such as a host's name.
-    - `optional` allows what is stated to go unread. Without it, a value
+    - `holds` says how many values it takes and what readers receive:
+      - `one`: stated exactly once, such as a host's name.
+      - `one.with-default value`: stated at most once.
+      - `many how`: stated any number of times. `how` turns the
+        `{ from, value }` entries into what readers receive: `as.list`,
+        `as.entries`, `as.unique`, `as.attrs`, or a function of your own.
+    - `allow-unread` lets what is stated go unread. Without it, a value
       nobody reads is an error, so nothing is silently dropped.
+
+    The definition is a function so that `one`, `many` and `as` exist only
+    where a fact is defined.
 
     Calling a fact with a value makes an emission. Payloads stay lazy.
 
     # Type
 
     ```
-    nameFact :: Address -> { scope? :: Scope, type? :: Type, merge :: [Entry] -> Any, optional? :: Bool } -> Fact
+    nameFact :: Address -> (Toolbox -> { scope? :: Scope, type? :: Type, holds :: Holds, allow-unread? :: Bool }) -> Fact
     ```
   */
   nameFact =
     address: definition:
     let
       name = display address;
+      record = factRecord definition;
+
+      chosen =
+        record.holds
+          or (throw "rhizome: fact `${name}` must say what it `holds`: `one`, `one.with-default <value>` or `many <how>`");
 
       self = {
         kind = "fact";
         inherit address name;
-        id = identify address "merge" definition;
-        scope = named "rhizome: fact `${name}`: `scope`" (definition.scope or root);
-        merge = definition.merge or (throw "rhizome: fact `${name}` must name a `merge`");
-        optional = definition.optional or false;
-        type = types.from (definition.type or types.any);
+        id = identify address "holds" record;
+        scope = named "rhizome: fact `${name}`: `scope`" (record.scope or root);
+        allow-unread = record.allow-unread or false;
+        type = types.from (record.type or types.any);
+
+        # Plain data, so a tool can tell what a fact holds:
+        # `{ count = "one"; default = null | { value }; }` or
+        # `{ count = "many"; as = <name> | null; combine; }`.
+        holds =
+          if !(lib.isAttrs chosen && chosen ? count) then
+            throw "rhizome: fact `${name}`: `holds` is `one`, `one.with-default <value>` or `many <how>`"
+          else if chosen.count == "many" then
+            { inherit (chosen) count as combine; }
+          else
+            {
+              inherit (chosen) count;
+              default =
+                if chosen.default == null then
+                  null
+                else
+                  { value = validate "fact `${name}`: default" self.type chosen.default.value; };
+            };
 
         __functor = _: value: {
           __emission = self.id;
@@ -429,11 +465,43 @@ let
       };
     in
     lib.seq (known "fact `${name}`" [
+      "allow-unread"
+      "holds"
       "scope"
-      "merge"
-      "optional"
       "type"
-    ] definition) self;
+    ] record) self;
+
+  /**
+    A fact's definition as a record. Given as a function, it receives what
+    `holds` can be: `{ one, many, as }`.
+
+    # Type
+
+    ```
+    factRecord :: AttrSet | (Toolbox -> AttrSet) -> AttrSet
+    ```
+  */
+  factRecord = definition: if lib.isFunction definition then definition holds else definition;
+
+  /**
+    What readers of a fact receive, given the entries stated for it.
+
+    # Type
+
+    ```
+    resolve :: Fact -> [Entry] -> Any
+    ```
+  */
+  resolve =
+    fact: entries:
+    if fact.holds.count == "many" then
+      fact.holds.combine entries
+    else if entries != [ ] then
+      (lib.head entries).value
+    else if fact.holds.default != null then
+      fact.holds.default.value
+    else
+      throw "rhizome: nothing provides `${fact.name}`";
 
   /**
     A leaf of the tree. It reads facts and states others.
@@ -743,8 +811,8 @@ let
   */
   countable =
     where: emission:
-    !(emission.each or false && emission.fact.merge ? expects)
-    || throw "rhizome: ${where}: `${emission.fact.name}` holds a single value, so it cannot be given `each`";
+    !(emission.each or false && emission.fact.holds.count == "one")
+    || throw "rhizome: ${where}: `${emission.fact.name}` holds one value, so it cannot be given `each`";
 
   /**
     A bare emission in a member list: written by the instance it sits in.
@@ -811,7 +879,7 @@ let
       factOf =
         emission: emission.fact or (throw "rhizome: ${where}: `provides` must be a list of emissions");
 
-      # What each local name in `uses` resolves to. Lazy: nothing is merged
+      # What each local name in `uses` resolves to. Lazy: nothing is resolved
       # until `provides` reads it.
       used = lib.mapAttrs (_: fact: context.pools.${fact.scope.id} fact) uses;
 
@@ -905,11 +973,11 @@ let
         gather inside (node.members ++ ((apply node.definition input).includes or [ ]))
       );
 
-      # A merge is given where each value came from as errors spell it.
+      # Whoever combines the entries is given where each came from, as errors spell it.
       slot = fact: entries: {
         inherit fact entries;
 
-        value = fact.merge (
+        value = resolve fact (
           map (entry: {
             from = show entry.path;
             inherit (entry) value;
@@ -918,7 +986,7 @@ let
       };
 
       # Everything written inside this instance, keyed by fact. Each fact
-      # is gathered and merged once, however many readers it has.
+      # is gathered and resolved once, however many readers it has.
       pool = lib.zipAttrsWith (
         _: tables: slot (lib.head tables).fact (lib.concatMap (table: table.entries) tables)
       ) (map (member: member.table) members);
@@ -926,7 +994,7 @@ let
       entries = fact: (pool.${fact.id} or { entries = [ ]; }).entries;
       read = fact: (pool.${fact.id} or (slot fact [ ])).value;
 
-      single = fact: fact.merge ? expects;
+      single = fact: fact.holds.count == "one";
 
       allReaders = lib.concatMap (member: member.readers) members;
       readers = lib.filter (reader: here reader.fact.scope) allReaders;
@@ -938,11 +1006,14 @@ let
       ) null context.scopes;
 
       # Values written for nobody are an error, unless the fact says they
-      # are optional. Whoever evaluates the tree reads from the root, so
+      # may go unread. Whoever evaluates the tree reads from the root, so
       # nothing there is unread.
       unread = lib.findFirst (
         slot:
-        here slot.fact.scope && !slot.fact.optional && !(isRead ? ${slot.fact.id}) && slot.entries != [ ]
+        here slot.fact.scope
+        && !slot.fact.allow-unread
+        && !(isRead ? ${slot.fact.id})
+        && slot.entries != [ ]
       ) null (lib.optionals (!here root) (lib.attrValues pool));
 
       # A fact holding a single value takes one writer, or one at most.
@@ -950,9 +1021,8 @@ let
         reader:
         let
           count = lib.length (entries reader.fact);
-          inherit (reader.fact.merge) expects;
         in
-        single reader.fact && (count < expects.least || count > expects.most)
+        single reader.fact && (count > 1 || count == 0 && reader.fact.holds.default == null)
       ) null readers;
     in
     {
@@ -1002,7 +1072,7 @@ let
             if found == [ ] then
               "nothing in ${where} provides"
             else
-              "has ${toString (lib.length found)} values in ${where} (from ${
+              "holds one value but is stated ${toString (lib.length found)} times in ${where} (by ${
                 lib.concatMapStringsSep ", " (entry: show entry.path) found
               })"
           }"
@@ -1036,7 +1106,7 @@ let
 
   /**
     Evaluate a tree, or a list of members. The caller stands at the root and
-    reads from it: `collect fact` returns the fact's merged value.
+    reads from it: `collect fact` returns what the fact holds.
 
     The whole tree is checked before anything is returned: inputs,
     declarations, nesting, cycles, that everything used is provided and that
@@ -1091,7 +1161,7 @@ let
           slot:
           map (entry: {
             fact = { inherit (slot.fact) address name; };
-            single = slot.fact.merge ? expects;
+            single = slot.fact.holds.count == "one";
             from = entry.path;
             to = locate { path = [ ]; } top;
           }) slot.entries

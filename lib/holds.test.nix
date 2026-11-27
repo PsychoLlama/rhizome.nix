@@ -1,7 +1,7 @@
-{ rhizome, ... }:
+{ lib, ... }:
 
 let
-  inherit (rhizome) merge;
+  inherit (import ./holds.nix { inherit lib; }) one many as;
 
   entry = from: value: { inherit from value; };
 
@@ -13,7 +13,7 @@ in
 
 {
   testListKeepsValuesInOrder = {
-    expr = merge.list [
+    expr = as.list [
       (entry "a" 1)
       (entry "b" 2)
     ];
@@ -25,12 +25,12 @@ in
   };
 
   testEntriesKeepsProvenance = {
-    expr = merge.entries [ (entry "a" 1) ];
+    expr = as.entries [ (entry "a" 1) ];
     expected = [ (entry "a" 1) ];
   };
 
   testUniqueDropsDuplicates = {
-    expr = merge.unique [
+    expr = as.unique [
       (entry "a" 1)
       (entry "b" 1)
       (entry "c" 2)
@@ -42,32 +42,44 @@ in
     ];
   };
 
-  testOneTakesTheOnlyValue = {
-    expr = merge.one [ (entry "a" 1) ];
-    expected = 1;
+  # What a fact holds is plain data, so a tool can read it.
+  testOneIsData = {
+    expr = {
+      inherit (one) count default;
+      fallback = { inherit (one.with-default 3) count default; };
+    };
+
+    expected = {
+      count = "one";
+      default = null;
+      fallback = {
+        count = "one";
+        default.value = 3;
+      };
+    };
   };
 
-  testOneRejectsNone = {
-    expr = merge.one [ ];
-    expectedError = failure "merge.one: expected exactly one value, got 0";
-  };
-
-  testOneRejectsSeveralAndNamesThem = {
-    expr = merge.one [
-      (entry "a" 1)
-      (entry "b" 2)
+  testManyNamesHowItIsRead = {
+    expr = [
+      (many as.list).as
+      (many as.attrs).as
+      (many (entries: entries)).as
     ];
 
-    expectedError = failure "expected exactly one value, got 2 .a b.";
+    expected = [
+      "list"
+      "attrs"
+      null
+    ];
   };
 
-  testOneOrNoneIsNullWhenEmpty = {
-    expr = merge.one-or-none [ ];
-    expected = null;
+  testManyTakesAFunction = {
+    expr = many "list";
+    expectedError = failure "`many` takes a function of the entries stated, such as `as.list`";
   };
 
   testAttrsRecursiveUnitesNestedAttrs = {
-    expr = merge.attrs.recursive [
+    expr = as.attrs [
       (entry "a" { core.pager = "delta"; })
       (entry "b" {
         core.editor = "nvim";
@@ -85,12 +97,12 @@ in
   };
 
   testAttrsRecursiveOfNothingIsEmpty = {
-    expr = merge.attrs.recursive [ ];
+    expr = as.attrs [ ];
     expected = { };
   };
 
   testAttrsRecursiveAllowsAgreement = {
-    expr = merge.attrs.recursive [
+    expr = as.attrs [
       (entry "a" { core.pager = "delta"; })
       (entry "b" { core.pager = "delta"; })
     ];
@@ -99,7 +111,7 @@ in
   };
 
   testAttrsRecursiveNamesBothEmitters = {
-    expr = merge.attrs.recursive [
+    expr = as.attrs [
       (entry "a" { core.pager = "delta"; })
       (entry "b" { core.pager = "less"; })
     ];
@@ -117,7 +129,7 @@ in
       };
     in
     {
-      expr = merge.attrs.recursive [
+      expr = as.attrs [
         (entry "a" { tool = package "one"; })
         (entry "b" { tool = package "two"; })
       ];

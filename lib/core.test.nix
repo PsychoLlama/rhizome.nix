@@ -1,8 +1,10 @@
-{ rhizome, ... }:
+{ lib, rhizome, ... }:
 
 let
   t = rhizome.types;
-  inherit (rhizome) merge;
+  # What a fact's definition receives. The tests pass records, so they need
+  # these in scope.
+  inherit (import ./holds.nix { inherit lib; }) one many as;
 
   # Tests make things one at a time. Each is a module of one.
   make =
@@ -26,26 +28,26 @@ let
   prefix = fact "prefix" {
     scope = group;
     type = t.str;
-    merge = merge.one;
-    optional = true;
+    holds = one;
+    allow-unread = true;
   };
 
   message = fact "message" {
     scope = group;
     type = t.str;
-    merge = merge.list;
+    holds = many as.list;
   };
 
   reply = fact "reply" {
     scope = group;
     type = t.str;
-    merge = merge.list;
+    holds = many as.list;
   };
 
   # Reaches the root.
   report = fact "report" {
     type = t.list t.str;
-    merge = merge.list;
+    holds = many as.list;
   };
 
   sender = unit "sender" {
@@ -119,7 +121,7 @@ in
     let
       audit = fact "audit" {
         type = t.str;
-        merge = merge.entries;
+        holds = many as.entries;
       };
     in
     {
@@ -142,7 +144,7 @@ in
       other = fact "message" {
         scope = group;
         type = t.str;
-        merge = merge.list;
+        holds = many as.list;
       };
     in
     {
@@ -214,7 +216,7 @@ in
       ]
     );
 
-    expectedError = failure "sender: uses `prefix`, which has 2 values in root > team.hi.";
+    expectedError = failure "sender: uses `prefix`, which holds one value but is stated 2 times in root > team.hi.";
   };
 
   testEmittingOutsideItsScopeFails = {
@@ -232,19 +234,19 @@ in
     expectedError = failure "sender: provides `message`, which nothing in root > team.hi. uses";
   };
 
-  # An optional fact is an offer: nobody has to read it.
-  testOptionalFactsMayGoUnread = {
+  # Nobody has to read a fact that allows it.
+  testFactsMayAllowGoingUnread = {
     expr = reports (team { prefix = "hi"; } [ ]);
     expected = [ ];
   };
 
-  # Holding a single value does not make a fact optional.
-  testSingleValuesMustBeReadUnlessOptional =
+  # Holding one value does not excuse a fact from being read.
+  testSingleValuesMustBeReadUnlessAllowed =
     let
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        merge = merge.one;
+        holds = one;
       };
     in
     {
@@ -344,18 +346,18 @@ in
     ];
   };
 
-  # A single value that may be absent is null when nobody wrote it...
-  testOneOrNoneIsNullWhenAbsent =
+  # A single value with a default is the default when nobody states it...
+  testDefaultsStandInWhenNothingIsStated =
     let
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        merge = merge.one-or-none;
+        holds = one.with-default "none";
       };
 
       reader = unit "reader" {
         uses = { inherit motto; };
-        provides = { motto }: [ (report [ (if motto == null then "none" else motto) ]) ];
+        provides = { motto }: [ (report [ motto ]) ];
       };
     in
     {
@@ -375,13 +377,13 @@ in
       ];
     };
 
-  # ...and still takes one writer at most.
-  testOneOrNoneRejectsTwoWriters =
+  # ...and still takes one statement at most.
+  testDefaultsStillRejectTwoStatements =
     let
       motto = fact "motto" {
         scope = group;
         type = t.str;
-        merge = merge.one-or-none;
+        holds = one.with-default "none";
       };
     in
     {
@@ -393,7 +395,7 @@ in
         ]
       );
 
-      expectedError = failure "uses `motto`, which has 2 values in root > team.hi.";
+      expectedError = failure "uses `motto`, which holds one value but is stated 2 times in root > team.hi.";
     };
 
   testMembersMustBeNodes = {
@@ -406,16 +408,73 @@ in
     expectedError = failure "scope `loose` must say what it is `within`";
   };
 
-  testFactsMustNameAMerge = {
-    expr = (fact "bare" { }).merge;
-    expectedError = failure "fact `bare` must name a `merge`";
+  testFactsMustSayWhatTheyHold = {
+    expr = (fact "bare" { }).holds;
+    expectedError = failure "fact `bare` must say what it `holds`";
+  };
+
+  testHoldsIsOneOrMany = {
+    expr = (fact "bare" { holds = as.list; }).holds;
+    expectedError = failure "fact `bare`: `holds` is `one`, `one.with-default <value>` or `many <how>`";
+  };
+
+  # The type only checks. A default is a value like any other.
+  testDefaultsAreTypeChecked = {
+    expr =
+      (fact "motto" {
+        type = t.str;
+        holds = one.with-default 42;
+      }).holds.default.value;
+
+    expectedError = failure "fact `motto`: default: expected str, got a int";
+  };
+
+  # A definition is given `one`, `many` and `as`, and says what it holds
+  # as data a tool can read.
+  testFactsReceiveWhatTheyCanHold = {
+    expr =
+      let
+        facts = rhizome.module { } (
+          define: _: {
+            name = define.fact ({ one, ... }: { holds = one; });
+            motto = define.fact ({ one, ... }: { holds = one.with-default "none"; });
+            tag = define.fact ({ many, as, ... }: { holds = many as.list; });
+            total = define.fact ({ many, ... }: { holds = many lib.length; });
+          }
+        );
+      in
+      [
+        { inherit (facts.name.holds) count default; }
+        { inherit (facts.motto.holds) count default; }
+        { inherit (facts.tag.holds) count as; }
+        { inherit (facts.total.holds) count as; }
+      ];
+
+    expected = [
+      {
+        count = "one";
+        default = null;
+      }
+      {
+        count = "one";
+        default.value = "none";
+      }
+      {
+        count = "many";
+        as = "list";
+      }
+      {
+        count = "many";
+        as = null;
+      }
+    ];
   };
 
   testFactsRejectUnknownFields = {
     expr =
       (fact "stale" {
         type = t.str;
-        merge = merge.list;
+        holds = many as.list;
         default = "x";
       }).id;
 
@@ -471,7 +530,7 @@ in
     expr = reports (
       team { prefix = "hi"; } [ (unit "eager" { provides = [ (prefix.each [ "a" ]) ]; }) ]
     );
-    expectedError = failure "eager: `prefix` holds a single value, so it cannot be given `each`";
+    expectedError = failure "eager: `prefix` holds one value, so it cannot be given `each`";
   };
 
   # `each` works on a bare emission too, and may be empty.
@@ -574,7 +633,7 @@ in
         letter = fact "${name}.letter" {
           scope = group;
           type = t.str;
-          merge = merge.list;
+          holds = many as.list;
         };
 
         reader = unit name {
@@ -694,7 +753,7 @@ in
           first = message.type;
           all = t.list message.type;
         };
-        merge = merge.one;
+        holds = one;
       };
     in
     {
@@ -805,7 +864,7 @@ in
           (
             define: self: {
               floor = define.scope { within = rhizome.root; };
-              letter = define.fact { merge = merge.list; };
+              letter = define.fact { holds = many as.list; };
               writer = define.unit { provides = [ (self.letter "dear") ]; };
               unit = define.group { includes = [ self.writer ]; };
               office = self.floor.instance { };
@@ -862,7 +921,7 @@ in
           define: _: {
             letter = define.fact {
               type = t.str;
-              merge = merge.list;
+              holds = many as.list;
             };
           }
         )).letter;
@@ -888,7 +947,7 @@ in
         define: _: rec {
           letter = define.fact {
             type = t.str;
-            merge = merge.list;
+            holds = many as.list;
           };
 
           unit = define.unit { provides = [ (letter "dear") ]; };
@@ -914,7 +973,7 @@ in
     expr =
       (rhizome.eval { } (
         unit "reader" {
-          uses.letters = loose.fact { merge = merge.list; };
+          uses.letters = loose.fact { holds = many as.list; };
         }
       )).routes;
 
@@ -925,7 +984,7 @@ in
     expr =
       (fact "lost" {
         scope = loose.scope { within = rhizome.root; };
-        merge = merge.list;
+        holds = many as.list;
       }).scope;
 
     expectedError = failure "rhizome: fact `lost`: `scope`: this scope has no name";
@@ -936,7 +995,7 @@ in
     expr =
       (loose.fact {
         type = t.str;
-        merge = merge.list;
+        holds = many as.list;
       }).type.name;
 
     expected = "str";
@@ -1083,7 +1142,7 @@ in
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
     expr = (rhizome.eval { } (rhizome.load ../tests/fixtures/broken/shapes { }).recursive.unit).routes;
-    expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:5";
+    expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:7";
   };
 
   testLoadRejectsLooseValues = {

@@ -1,8 +1,11 @@
 { rhizome, define, ... }:
 
 {
-  said = define.fact {
-    type = rhizome.types.str;
-    merge = rhizome.merge.list;
-  };
+  said = define.fact (
+    { many, as, ... }:
+    {
+      type = rhizome.types.str;
+      holds = many as.list;
+    }
+  );
 }

@@ -2,19 +2,25 @@
 
 let
   types = import ./types.nix { inherit lib; };
-  merge = import ./merge.nix { inherit lib; };
+  holds = import ./holds.nix { inherit lib; };
   address = import ./address.nix { inherit lib; };
   graph = import ./graph.nix { inherit lib address; };
-  core = import ./core.nix { inherit lib address types; };
+  core = import ./core.nix {
+    inherit
+      lib
+      address
+      types
+      holds
+      ;
+  };
 
   /**
     Everything rhizome exports: the definitions in `core.nix`, the `types`,
-    `merge`, `graph` and `address` namespaces, and `load`.
+    `graph` and `address` namespaces, and `load`.
   */
   rhizome = core // {
     inherit
       types
-      merge
       graph
       address
       ;
