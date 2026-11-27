@@ -1134,6 +1134,49 @@ in
     expectedError = failure "`smuggled.unit` holds a unit made with another module's builders";
   };
 
+  # A definition given its input is a use of it. A file may export one:
+  # a host is an instance of the host scope, with nothing around it.
+  testUsesOfAnotherModulesDefinitionsCanBeExported =
+    let
+      platform = rhizome.module { path = [ "platform" ]; } (
+        define: self: {
+          scope = define.scope { within = rhizome.root; };
+          name = define.fact { scope = self.scope; };
+          said = define.collection { };
+
+          instance = self.scope.instance (input: {
+            type.name = t.str;
+            label = input.name;
+            includes = [ (self.name input.name) ];
+          });
+
+          greeter = define.unit (input: {
+            type.greeting = t.str;
+            uses = { inherit (self) name; };
+            provides = { name }: [ (self.said "${input.greeting}, ${name}") ];
+          });
+        }
+      );
+
+      hosts = rhizome.module { path = [ "hosts" ]; } (
+        _: self: {
+          greeter = platform.greeter { greeting = "hello"; };
+          unit = platform.instance { name = "nas"; } [ self.greeter ];
+        }
+      );
+    in
+    {
+      expr = {
+        said = (rhizome.eval { } hosts.unit).collect platform.said;
+        inherit (hosts.unit) name;
+      };
+
+      expected = {
+        said = [ "hello, nas" ];
+        name = "platform.instance";
+      };
+    };
+
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
     expr = (rhizome.eval { } (rhizome.load ../tests/fixtures/broken/shapes { }).recursive.unit).routes;
     expectedError = failure "tests/fixtures/broken/shapes/recursive.nix:5";

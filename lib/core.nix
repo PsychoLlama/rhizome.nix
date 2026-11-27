@@ -278,8 +278,12 @@ let
           value.build address
         else if kind == "pending" then
           throw "rhizome: `${display address}` holds a ${value.what} made with another module's builders"
+        # A definition given its input is a use of it, not the definition.
+        # It keeps the name it has, so a file may export one.
+        else if lib.elem kind kinds && value.applied or false then
+          value
         else if lib.elem kind kinds then
-          throw "rhizome: `${display address}` holds the ${kind} `${value.name}`, which another module named. To include it, put it in a group"
+          throw "rhizome: `${display address}` holds the ${kind} `${value.name}`, which another module named. A file may export a use of it, given its input, or a group that includes it"
         else
           throw "rhizome: `${display address}` is not a definition. Functions belong in `lib` and constants in `values`"
       ) (exports builders self);
@@ -552,7 +556,13 @@ let
     inherit address definition;
     name = display address;
     input = { };
-    __functor = self: input: self // { inherit input; };
+    __functor =
+      self: input:
+      self
+      // {
+        inherit input;
+        applied = true;
+      };
   };
 
   /**
@@ -581,7 +591,13 @@ let
     inherit address definition;
     name = display address;
     input = { };
-    __functor = self: input: self // { inherit input; };
+    __functor =
+      self: input:
+      self
+      // {
+        inherit input;
+        applied = true;
+      };
   };
 
   /**
@@ -605,7 +621,11 @@ let
       if !lib.isAttrs input || !lib.isList members then
         throw "rhizome: `${self.name}` takes its input, then its members: `instance { … } [ … ]`"
       else
-        self // { inherit input members; };
+        self
+        // {
+          inherit input members;
+          applied = true;
+        };
   };
 
   /**
