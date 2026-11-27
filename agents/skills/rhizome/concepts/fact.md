@@ -16,7 +16,7 @@ port = define.collection { scope = host.scope; type = types.int; };
 ## Collection
 
 - Stated any number of times, none included. Readers receive the values as a list, in tree order.
-- `combine`: a function from what was stated to what readers receive instead. It is given entries, `{ from, value }`, where `from` says who stated the value.
+- `combine`: a function from what was stated to what readers receive instead. It is given entries, `{ file, value }`, where `file` is the file of whoever stated the value, or null for a value stated outside any file.
 - `collection.each [ … ]` states several values in one emission.
 
 ## Shared fields

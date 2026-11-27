@@ -11,7 +11,7 @@ Shapes that recur when a configuration is built from units.
 ## Feeding a module system
 
 - Give the module system a collection typed `t.module`, scoped to whatever owns one evaluation.
-- Have it hand out modules that say who wrote them: `combine = map ({ from, value }: { _file = from; imports = [ value ]; })`. The module system's errors then name the unit.
+- Have it hand out modules that say who wrote them: `combine = map ({ file, value }: { _file = file; imports = [ value ]; })`. The module system's errors then name the unit's file.
 - One unit reads the collection and hands the modules over.
 - Units then state ordinary modules: `(nixos.module { services.openssh.enable = true; })`.
 - A unit may add to several such collections. A concern that spans two module systems is still one unit.

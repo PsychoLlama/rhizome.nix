@@ -7,8 +7,8 @@ let
   make =
     builder: name: definition:
     (rhizome.module {
-      namespace = null;
-      path = [ ];
+      root = /test;
+      path = /test/default.nix;
     } (define: _: { ${name} = builder define definition; })).${name};
 
   scope = make (define: define.scope);
@@ -21,8 +21,8 @@ let
   # Builders taken out of their module, to make what nothing will name.
   loose =
     (rhizome.module {
-      namespace = null;
-      path = [ ];
+      root = /test;
+      path = /test/default.nix;
     } (define: _: { lib = define; })).lib;
 
   group = scope "group" { };
@@ -133,7 +133,7 @@ in
 
       expected = [
         {
-          from = "root > team[hi] > auditor";
+          file = /test/default.nix;
           value = "seen";
         }
       ];
@@ -442,8 +442,8 @@ in
         made =
           rhizome.module
             {
-              namespace = null;
-              path = [ ];
+              root = /test;
+              path = /test/default.nix;
             }
             (
               define: _: {
@@ -460,7 +460,7 @@ in
         made.tag.kind
         (made.tag.combine [
           {
-            from = "a";
+            file = /test/default.nix;
             value = 1;
           }
         ])
@@ -880,11 +880,8 @@ in
       mail =
         rhizome.module
           {
-            namespace = "lab";
-            path = [
-              "services"
-              "mail"
-            ];
+            root = /lab;
+            path = /lab/services/mail.nix;
           }
           (
             define: self: {
@@ -909,7 +906,7 @@ in
           "office"
         ];
 
-        inherit (mail.letter) address;
+        inherit (mail.letter) address file;
         stamp = mail.lib.stamp + mail.values.price;
         letters = (rhizome.eval { } mail.unit).collect mail.letter;
       };
@@ -924,13 +921,15 @@ in
         ];
 
         address = {
-          namespace = "lab";
+          namespace = "/lab";
           path = [
             "services"
             "mail"
           ];
           name = "letter";
         };
+
+        file = /lab/services/mail.nix;
 
         stamp = 3;
         letters = [ "dear" ];
@@ -941,11 +940,11 @@ in
   testNamespacesKeepDefinitionsApart =
     let
       letter =
-        namespace:
+        root:
         (rhizome.module
           {
-            inherit namespace;
-            path = [ ];
+            inherit root;
+            path = root + "/default.nix";
           }
           (
             define: _: {
@@ -956,8 +955,8 @@ in
           )
         ).letter;
 
-      ours = letter "ours";
-      theirs = letter "theirs";
+      ours = letter /ours;
+      theirs = letter /theirs;
     in
     {
       expr =
@@ -970,14 +969,84 @@ in
       expected = [ "dear" ];
     };
 
+  # A directory's `default.nix` is named after the directory.
+  testModulesAreNamedAfterTheirFile = {
+    expr =
+      map
+        (
+          path:
+          (rhizome.module {
+            root = /lab;
+            inherit path;
+          } (define: _: { unit = define.unit { }; })).unit.name
+        )
+        [
+          /lab/services/mail.nix
+          /lab/services/mail/default.nix
+          /lab/default.nix
+        ];
+
+    expected = [
+      "services.mail.unit"
+      "services.mail.unit"
+      "unit"
+    ];
+  };
+
+  testModulesSitUnderTheirRoot = {
+    expr =
+      (rhizome.module {
+        root = /lab;
+        path = /elsewhere/mail.nix;
+      } (define: _: { unit = define.unit { }; })).unit.name;
+    expectedError = failure "rhizome: the module /elsewhere/mail.nix is not under its root, /lab";
+  };
+
+  testModulesAreNixFiles = {
+    expr =
+      (rhizome.module {
+        root = /lab;
+        path = /lab/mail;
+      } (define: _: { unit = define.unit { }; })).unit.name;
+    expectedError = failure "rhizome: the module /lab/mail is not a `.nix` file";
+  };
+
+  testModulesTakePaths = {
+    expr =
+      (rhizome.module {
+        root = "lab";
+        path = [ "mail" ];
+      } (define: _: { unit = define.unit { }; })).unit.name;
+    expectedError = failure "rhizome: a module's `root` and `path` are paths, got a string and a list";
+  };
+
+  # A value stated at the top of `eval` was written in no module.
+  testEntriesOutsideAModuleHaveNoFile =
+    let
+      audit = collection "audit" {
+        type = t.str;
+        combine = entries: entries;
+      };
+    in
+    {
+      expr = (rhizome.eval { } [ (audit "seen") ]).collect audit;
+
+      expected = [
+        {
+          file = null;
+          value = "seen";
+        }
+      ];
+    };
+
   # `rec` sees a definition before the module has named it.
   testRecReachesUnnamedDefinitions =
     let
       mail =
         rhizome.module
           {
-            namespace = null;
-            path = [ ];
+            root = /test;
+            path = /test/default.nix;
           }
           (
             define: _: rec {
@@ -1037,8 +1106,8 @@ in
   testModulesRejectLooseValues = {
     expr =
       (rhizome.module {
-        namespace = null;
-        path = [ ];
+        root = /test;
+        path = /test/default.nix;
       } (_: _: { port = 8080; })).port;
     expectedError = failure "`port` is not a definition. Functions belong in `lib` and constants in `values`";
   };
@@ -1134,6 +1203,8 @@ in
         path = units.programs.greeter.hello.address.path;
         namespace = units.programs.greeter.hello.address.namespace == toString ../tests/fixtures/units;
 
+        file = units.programs.greeter.hello.file == ../tests/fixtures/units/programs/greeter.nix;
+
         # Files receive the arguments, and reach each other through `units`.
         said = (rhizome.eval { } units.programs.greeter.unit).collect units.platform.said;
       };
@@ -1155,6 +1226,7 @@ in
           "greeter"
         ];
         namespace = true;
+        file = true;
         said = [ "hello" ];
       };
     };
@@ -1184,8 +1256,8 @@ in
       platform =
         rhizome.module
           {
-            namespace = null;
-            path = [ "platform" ];
+            root = /test;
+            path = /test/platform.nix;
           }
           (
             define: self: {
@@ -1210,8 +1282,8 @@ in
       hosts =
         rhizome.module
           {
-            namespace = null;
-            path = [ "hosts" ];
+            root = /test;
+            path = /test/hosts.nix;
           }
           (
             _: self: {
@@ -1237,13 +1309,13 @@ in
     expr =
       let
         office = rhizome.module {
-          namespace = null;
-          path = [ ];
+          root = /test;
+          path = /test/default.nix;
         } (define: _: { scope = define.scope { }; });
 
         school = rhizome.module {
-          namespace = null;
-          path = [ ];
+          root = /test;
+          path = /test/default.nix;
         } (define: _: { scope = define.scope { }; });
       in
       office.scope.id == school.scope.id;

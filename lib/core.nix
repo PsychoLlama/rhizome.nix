@@ -220,7 +220,7 @@ let
     A module: definitions that live at one path. It hands over the
     builders, and names what is exported after the attribute and the path:
 
-        dns = rhizome.module { namespace = ./.; path = [ "services" "dns" ]; } (define: self: {
+        dns = rhizome.module { root = ./.; path = ./services/dns.nix; } (define: self: {
           record = define.fact { … };                            # services.dns.record
           unit = define.unit { provides = [ (self.record "…") ]; };
         });
@@ -235,29 +235,35 @@ let
     for functions and `values` for constants. Anything else is rejected,
     including a definition from some other module.
 
-    - `namespace`: whose definitions these are, such as the directory they
-      came from. The same path in another namespace is another definition.
-    - `path`: where the module sits, as a list. Names start with it.
+    - `root`: the directory the module belongs to. It is the namespace, so
+      the same file under another root is another definition.
+    - `path`: the module's file, under `root`. Names start with where it
+      sits: `services/dns.nix` and `services/dns/default.nix` are both
+      `services.dns`.
 
-    Both are required: together with the attribute they are what a
-    definition is.
+    Both are paths, and neither has to exist. Together with the attribute
+    they are what a definition is.
 
-    Every definition carries its `address`, and a `name` rendered from it.
+    Every definition carries its `address`, a `name` rendered from it, and
+    the `file` it was written in.
 
     # Type
 
     ```
-    module :: { namespace :: Any, path :: [String] } -> (Builders -> AttrSet -> AttrSet) -> AttrSet
+    module :: { root :: Path, path :: Path } -> (Builders -> AttrSet -> AttrSet) -> AttrSet
     ```
   */
   module =
     {
-      namespace,
+      root,
       path,
     }:
     exports:
     let
-      origin = { inherit namespace path; };
+      origin = {
+        namespace = toString root;
+        path = segments root path;
+      };
 
       builder =
         what: build: definition:
@@ -283,7 +289,7 @@ let
         if lib.elem attribute reserved then
           value
         else if kind == "pending" && (value.origin == null || value.origin == origin) then
-          value.build address (lib.unsafeGetAttrPos attribute exported)
+          value.build address (lib.unsafeGetAttrPos attribute exported) // { file = path; }
         else if kind == "pending" then
           throw "rhizome: `${display address}` holds a ${value.what} made with another module's builders"
         # A definition given its input is a use of it, not the definition.
@@ -299,6 +305,32 @@ let
       exported = exports builders self;
     in
     self;
+
+  /**
+    Where a module sits under its root, as its names spell it:
+    `[ "services" "dns" ]` for `services/dns.nix` and for
+    `services/dns/default.nix`.
+
+    # Type
+
+    ```
+    segments :: Path -> Path -> [String]
+    ```
+  */
+  segments =
+    root: path:
+    let
+      components = lib.path.subpath.components (lib.path.removePrefix root path);
+      stem = lib.removeSuffix ".nix" (lib.last components);
+    in
+    if !lib.isPath root || !lib.isPath path then
+      throw "rhizome: a module's `root` and `path` are paths, got a ${builtins.typeOf root} and a ${builtins.typeOf path}"
+    else if !lib.path.hasPrefix root path then
+      throw "rhizome: the module ${toString path} is not under its root, ${toString root}"
+    else if components == [ ] || !lib.hasSuffix ".nix" (lib.last components) then
+      throw "rhizome: the module ${toString path} is not a `.nix` file"
+    else
+      lib.init components ++ lib.optional (stem != "default") stem;
 
   /**
     A scope's `instance`: a builder for one instance of it.
@@ -444,8 +476,10 @@ let
     - `scope`, `allow-unread`: as for a fact.
     - `type` checks each value stated.
     - `combine` turns what was stated into what readers receive. It is
-      given entries, `{ from, value }`, where `from` is the trail of
-      whoever stated the value. Without it, readers receive the values.
+      given entries, `{ file, value }`, where `file` is the module that
+      stated the value: the `path` it was made with. It is null for a
+      value stated outside any module, at the top of `eval`. Without
+      `combine`, readers receive the values.
 
     Calling a collection with a value makes an emission. `collection.each`
     takes a list of them, for when how many there are depends on what a
@@ -843,20 +877,14 @@ let
     # Type
 
     ```
-    spread :: [Step] -> Emission -> [{ path :: [Step], value :: Any }]
+    spread :: { path :: [Step], file :: Path | Null } -> Emission -> [{ path :: [Step], file :: Path | Null, value :: Any }]
     ```
   */
   spread =
-    path: emission:
-    if emission.each or false then
-      map (value: { inherit path value; }) emission.value
-    else
-      [
-        {
-          inherit path;
-          inherit (emission) value;
-        }
-      ];
+    writer: emission:
+    map (value: writer // { inherit value; }) (
+      if emission.each or false then emission.value else [ emission.value ]
+    );
 
   /**
     A fact takes one statement, so `each` has no place on it. Checking this needs no payload.
@@ -890,7 +918,7 @@ let
     {
       table.${fact.id} = {
         inherit fact;
-        entries = spread context.path emission;
+        entries = spread { inherit (context) path file; } emission;
       };
 
       readers = [ ];
@@ -912,6 +940,7 @@ let
     context: node:
     let
       path = locate context node;
+      file = node.file or null;
       where = show path;
 
       declared = record where "unit" (declarations node.name node.definition);
@@ -973,7 +1002,7 @@ let
           fact:
           lib.nameValuePair fact.id {
             inherit fact;
-            entries = lib.concatMap (spread path) (
+            entries = lib.concatMap (spread { inherit path file; }) (
               lib.filter (emission: emission.fact.id == fact.id) emissions
             );
           }
@@ -1023,6 +1052,7 @@ let
 
       inside = {
         inherit path;
+        file = node.file or null;
         scopes = context.scopes ++ scopes;
         pools = context.pools // lib.listToAttrs (map (scope: lib.nameValuePair scope.id read) scopes);
       };
@@ -1031,16 +1061,10 @@ let
         gather inside (node.members ++ ((apply node.definition input).includes or [ ]))
       );
 
-      # Whoever combines the entries is given where each came from, as errors spell it.
+      # Whoever combines the entries is given the file each was written in.
       slot = fact: entries: {
         inherit fact entries;
-
-        value = resolve fact (
-          map (entry: {
-            from = show entry.path;
-            inherit (entry) value;
-          }) entries
-        );
+        value = resolve fact (map (entry: { inherit (entry) file value; }) entries);
       };
 
       # Everything written inside this instance, keyed by fact. Each fact
@@ -1185,6 +1209,7 @@ let
 
       result = evaluateInstance {
         path = [ ];
+        file = null;
         scopes = [ ];
         pools = { };
       } top;

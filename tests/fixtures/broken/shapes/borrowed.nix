@@ -3,7 +3,7 @@
 {
   unit =
     (rhizome.module {
-      namespace = null;
-      path = [ "elsewhere" ];
+      root = /test;
+      path = /test/elsewhere.nix;
     } (define: _: { unit = define.unit { }; })).unit;
 }

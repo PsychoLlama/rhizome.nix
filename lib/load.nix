@@ -24,7 +24,8 @@
   `rhizome.module`, which does the naming.
 
   The directory being loaded is the namespace, so the same path in another
-  project is a different definition.
+  project is a different definition. Inside a flake it is a store path, so
+  it changes with the source.
 
   A directory's `default.nix` holds what belongs to the directory itself.
   Its attributes sit beside the directory's files, and may not share a name
@@ -45,10 +46,6 @@ rhizome: root: args:
 let
   units = directory root [ ];
 
-  # Stands for this tree among others. Inside a flake it is a store path,
-  # so it changes with the source.
-  namespace = toString root;
-
   show = lib.concatStringsSep ".";
 
   /**
@@ -68,28 +65,23 @@ let
       value;
 
   file =
-    path: segments:
-    rhizome.module
-      {
-        inherit namespace;
-        path = segments;
-      }
-      (
-        define: self:
-        exports path (
-          import path (
-            args
-            // {
-              inherit (rhizome) types;
-              inherit
-                units
-                self
-                define
-                ;
-            }
-          )
+    path:
+    rhizome.module { inherit root path; } (
+      define: self:
+      exports path (
+        import path (
+          args
+          // {
+            inherit (rhizome) types;
+            inherit
+              units
+              self
+              define
+              ;
+          }
         )
-      );
+      )
+    );
 
   directory =
     path: segments:
@@ -107,11 +99,11 @@ let
             let
               unit = lib.removeSuffix ".nix" name;
             in
-            [ (lib.nameValuePair unit (file (path + "/${name}") (segments ++ [ unit ]))) ]
+            [ (lib.nameValuePair unit (file (path + "/${name}"))) ]
         ) entries
       );
 
-      own = lib.optionalAttrs (entries ? "default.nix") (file (path + "/default.nix") segments);
+      own = lib.optionalAttrs (entries ? "default.nix") (file (path + "/default.nix"));
 
       names = map (child: child.name) children ++ lib.attrNames own;
       twice = lib.findFirst (name: lib.count (other: other == name) names > 1) null names;
