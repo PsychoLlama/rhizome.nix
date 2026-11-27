@@ -73,3 +73,7 @@ rhizome.unit "laptop" {
 ```
 
 Gill gets the pager and Bates doesn't. Give Bates `delta.unit` without `git.unit` and evaluation fails, naming exactly what failed and why.
+
+## The Name
+
+"Rhizome" is named after [a philosophical framework](<https://en.wikipedia.org/wiki/Rhizome_(philosophy)>) that tickled my brain. Loosely, a graph where edges define meaning more than the nodes themselves.
