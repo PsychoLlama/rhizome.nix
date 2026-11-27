@@ -24,7 +24,7 @@ Units are plain values, so a unit is tested by evaluating a small tree that hold
 
 ## Without files
 
-- `rhizome.module { } (define: self: { … })` makes definitions in place, for a test that should not depend on a directory. See [file](../concepts/file.md).
+- `rhizome.module { namespace = "test"; path = [ ]; } (define: self: { … })` makes definitions in place, for a test that should not depend on a directory. See [file](../concepts/file.md).
 
 ## What to test
 

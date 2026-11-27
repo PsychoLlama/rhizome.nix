@@ -38,4 +38,4 @@ A unit file is a function that returns an attrset of definitions. `rhizome.load`
 
 ## Without a file
 
-- `rhizome.module { namespace ? null; path ? [ ]; } (define: self: { … })` names the same kind of attrset. Tests use it.
+- `rhizome.module { namespace; path; } (define: self: { … })` names the same kind of attrset. `namespace` says whose definitions they are and `path` where the module sits; both are required. Tests use it.

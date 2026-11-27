@@ -15,30 +15,31 @@ let
     Definitions are told apart by their address and by where they were
     written. Two facts that happen to share a name stay separate.
 
-    The position is read off an attribute of the definition. It is missing
-    for code that does not come from a file, and it is shared by definitions
-    made in one place by a helper function, so the address is always part
-    of it.
+    Two positions are used. One is that of the attribute a module exports
+    the definition under, which every definition in a file has, even one
+    that holds nothing. The other is that of a field of the definition,
+    which tells apart definitions a helper exports under one attribute.
+    Either may be missing for code that does not come from a file, so the
+    address is always part of it.
 
     # Type
 
     ```
-    identify :: Address -> String -> Any -> String
+    identify :: Address -> [Position | Null] -> String
     ```
   */
   identify =
-    address: attribute: record:
+    address: positions:
     let
       name =
         lib.optionalString (address.namespace != null) "${toString address.namespace}:" + display address;
-
-      position =
-        if lib.isAttrs record && record ? ${attribute} then lib.unsafeGetAttrPos attribute record else null;
     in
-    if position == null then
-      name
-    else
-      "${name}@${position.file}:${toString position.line}:${toString position.column}";
+    lib.concatStrings (
+      [ name ]
+      ++ map (position: "@${position.file}:${toString position.line}:${toString position.column}") (
+        lib.filter (position: position != null) positions
+      )
+    );
 
   /**
     A definition is a record, or a function from input to a record.
@@ -126,7 +127,7 @@ let
     # Type
 
     ```
-    pending :: Origin | Null -> String -> Definition -> (Address -> Node) -> Pending
+    pending :: Origin | Null -> String -> Definition -> (Address -> Position | Null -> Node) -> Pending
     ```
   */
   pending =
@@ -219,7 +220,7 @@ let
     A module: definitions that live at one path. It hands over the
     builders, and names what is exported after the attribute and the path:
 
-        dns = rhizome.module { path = [ "services" "dns" ]; } (define: self: {
+        dns = rhizome.module { namespace = ./.; path = [ "services" "dns" ]; } (define: self: {
           record = define.fact { … };                            # services.dns.record
           unit = define.unit { provides = [ (self.record "…") ]; };
         });
@@ -234,18 +235,25 @@ let
     for functions and `values` for constants. Anything else is rejected,
     including a definition from some other module.
 
+    - `namespace`: whose definitions these are, such as the directory they
+      came from. The same path in another namespace is another definition.
+    - `path`: where the module sits, as a list. Names start with it.
+
+    Both are required: together with the attribute they are what a
+    definition is.
+
     Every definition carries its `address`, and a `name` rendered from it.
 
     # Type
 
     ```
-    module :: { namespace? :: Any, path? :: [String] } -> (Builders -> AttrSet -> AttrSet) -> AttrSet
+    module :: { namespace :: Any, path :: [String] } -> (Builders -> AttrSet -> AttrSet) -> AttrSet
     ```
   */
   module =
     {
-      namespace ? null,
-      path ? [ ],
+      namespace,
+      path,
     }:
     exports:
     let
@@ -253,7 +261,7 @@ let
 
       builder =
         what: build: definition:
-        pending origin what definition (address: build address definition);
+        pending origin what definition (address: position: build address position definition);
 
       builders = {
         scope = builder "scope" nameScope;
@@ -275,7 +283,7 @@ let
         if lib.elem attribute reserved then
           value
         else if kind == "pending" && (value.origin == null || value.origin == origin) then
-          value.build address
+          value.build address (lib.unsafeGetAttrPos attribute exported)
         else if kind == "pending" then
           throw "rhizome: `${display address}` holds a ${value.what} made with another module's builders"
         # A definition given its input is a use of it, not the definition.
@@ -286,7 +294,9 @@ let
           throw "rhizome: `${display address}` holds the ${kind} `${value.name}`, which another module named. A file may export a use of it, given its input, or a group that includes it"
         else
           throw "rhizome: `${display address}` is not a definition. Functions belong in `lib` and constants in `values`"
-      ) (exports builders self);
+      ) exported;
+
+      exported = exports builders self;
     in
     self;
 
@@ -301,7 +311,7 @@ let
   */
   instanceOf =
     scope: definition:
-    pending null "instance" definition (address: nameInstance address [ scope ] definition);
+    pending null "instance" definition (address: _: nameInstance address [ scope ] definition);
 
   /**
     Attributes of a module that are not definitions.
@@ -364,11 +374,11 @@ let
     # Type
 
     ```
-    nameScope :: Address -> { } -> Scope
+    nameScope :: Address -> Position | Null -> { } -> Scope
     ```
   */
   nameScope =
-    address: definition:
+    address: position: definition:
     let
       name = display address;
     in
@@ -376,7 +386,7 @@ let
       lib.fix (self: {
         kind = "scope";
         inherit address name;
-        id = identify address "scope" definition;
+        id = identify address [ position ];
         instance = instanceOf self;
       })
     );
@@ -407,12 +417,12 @@ let
     # Type
 
     ```
-    nameFact :: Address -> { scope? :: Scope, type? :: Type, default? :: Any, allow-unread? :: Bool } -> Fact
+    nameFact :: Address -> Position | Null -> { scope? :: Scope, type? :: Type, default? :: Any, allow-unread? :: Bool } -> Fact
     ```
   */
   nameFact =
-    address: definition:
-    stated "fact" address definition [ "default" ] (self: {
+    address: position: definition:
+    stated "fact" address position definition [ "default" ] (self: {
       default =
         if definition ? default then
           { value = validate "fact `${self.name}`: default" self.type definition.default; }
@@ -444,12 +454,12 @@ let
     # Type
 
     ```
-    nameCollection :: Address -> { scope? :: Scope, type? :: Type, combine? :: [Entry] -> Any, allow-unread? :: Bool } -> Collection
+    nameCollection :: Address -> Position | Null -> { scope? :: Scope, type? :: Type, combine? :: [Entry] -> Any, allow-unread? :: Bool } -> Collection
     ```
   */
   nameCollection =
-    address: definition:
-    stated "collection" address definition [ "combine" ] (_: {
+    address: position: definition:
+    stated "collection" address position definition [ "combine" ] (_: {
       combine = definition.combine or (map (entry: entry.value));
     });
 
@@ -459,11 +469,11 @@ let
     # Type
 
     ```
-    stated :: String -> Address -> AttrSet -> [String] -> (Node -> AttrSet) -> Node
+    stated :: String -> Address -> Position | Null -> AttrSet -> [String] -> (Node -> AttrSet) -> Node
     ```
   */
   stated =
-    kind: address: definition: fields: extra:
+    kind: address: position: definition: fields: extra:
     let
       name = display address;
 
@@ -475,7 +485,17 @@ let
 
       self = {
         inherit kind address name;
-        id = identify address (if record ? scope then "scope" else "type") record;
+        id = identify address [
+          position
+          (
+            if record ? scope then
+              lib.unsafeGetAttrPos "scope" record
+            else if record ? type then
+              lib.unsafeGetAttrPos "type" record
+            else
+              null
+          )
+        ];
         scope = named "rhizome: ${kind} `${name}`: `scope`" (record.scope or root);
         allow-unread = record.allow-unread or false;
         type = types.from (record.type or types.any);
@@ -548,10 +568,10 @@ let
     # Type
 
     ```
-    nameUnit :: Address -> Definition -> Unit
+    nameUnit :: Address -> Position | Null -> Definition -> Unit
     ```
   */
-  nameUnit = address: definition: {
+  nameUnit = address: _: definition: {
     kind = "unit";
     inherit address definition;
     name = display address;
@@ -583,10 +603,10 @@ let
     # Type
 
     ```
-    nameGroup :: Address -> Definition -> Group
+    nameGroup :: Address -> Position | Null -> Definition -> Group
     ```
   */
-  nameGroup = address: definition: {
+  nameGroup = address: _: definition: {
     kind = "group";
     inherit address definition;
     name = display address;
@@ -714,7 +734,7 @@ let
   */
   ignore =
     fact:
-    nameUnit (locally "ignore `${(named "rhizome: `ignore`" fact).name}`") {
+    nameUnit (locally "ignore `${(named "rhizome: `ignore`" fact).name}`") null {
       uses.ignored = fact;
     };
 

@@ -6,7 +6,10 @@ let
   # Tests make things one at a time. Each is a module of one.
   make =
     builder: name: definition:
-    (rhizome.module { } (define: _: { ${name} = builder define definition; })).${name};
+    (rhizome.module {
+      namespace = null;
+      path = [ ];
+    } (define: _: { ${name} = builder define definition; })).${name};
 
   scope = make (define: define.scope);
   fact = make (define: define.fact);
@@ -16,7 +19,11 @@ let
   instance = scope: make (_: scope.instance);
 
   # Builders taken out of their module, to make what nothing will name.
-  loose = (rhizome.module { } (define: _: { lib = define; })).lib;
+  loose =
+    (rhizome.module {
+      namespace = null;
+      path = [ ];
+    } (define: _: { lib = define; })).lib;
 
   group = scope "group" { };
 
@@ -432,14 +439,20 @@ in
   testFactsAndCollectionsAreData = {
     expr =
       let
-        made = rhizome.module { } (
-          define: _: {
-            name = define.fact { };
-            motto = define.fact { default = null; };
-            tag = define.collection { };
-            total = define.collection { combine = lib.length; };
-          }
-        );
+        made =
+          rhizome.module
+            {
+              namespace = null;
+              path = [ ];
+            }
+            (
+              define: _: {
+                name = define.fact { };
+                motto = define.fact { default = null; };
+                tag = define.collection { };
+                total = define.collection { combine = lib.length; };
+              }
+            );
       in
       [
         { inherit (made.name) kind default; }
@@ -929,13 +942,19 @@ in
     let
       letter =
         namespace:
-        (rhizome.module { inherit namespace; } (
-          define: _: {
-            letter = define.collection {
-              type = t.str;
-            };
+        (rhizome.module
+          {
+            inherit namespace;
+            path = [ ];
           }
-        )).letter;
+          (
+            define: _: {
+              letter = define.collection {
+                type = t.str;
+              };
+            }
+          )
+        ).letter;
 
       ours = letter "ours";
       theirs = letter "theirs";
@@ -954,15 +973,21 @@ in
   # `rec` sees a definition before the module has named it.
   testRecReachesUnnamedDefinitions =
     let
-      mail = rhizome.module { } (
-        define: _: rec {
-          letter = define.collection {
-            type = t.str;
-          };
+      mail =
+        rhizome.module
+          {
+            namespace = null;
+            path = [ ];
+          }
+          (
+            define: _: rec {
+              letter = define.collection {
+                type = t.str;
+              };
 
-          unit = define.unit { provides = [ (letter "dear") ]; };
-        }
-      );
+              unit = define.unit { provides = [ (letter "dear") ]; };
+            }
+          );
     in
     {
       expr = (rhizome.eval { } mail.unit).collect mail.letter;
@@ -1010,7 +1035,11 @@ in
   };
 
   testModulesRejectLooseValues = {
-    expr = (rhizome.module { } (_: _: { port = 8080; })).port;
+    expr =
+      (rhizome.module {
+        namespace = null;
+        path = [ ];
+      } (_: _: { port = 8080; })).port;
     expectedError = failure "`port` is not a definition. Functions belong in `lib` and constants in `values`";
   };
 
@@ -1152,32 +1181,44 @@ in
   # a host is an instance of the host scope, with nothing around it.
   testUsesOfAnotherModulesDefinitionsCanBeExported =
     let
-      platform = rhizome.module { path = [ "platform" ]; } (
-        define: self: {
-          scope = define.scope { };
-          name = define.fact { scope = self.scope; };
-          said = define.collection { };
+      platform =
+        rhizome.module
+          {
+            namespace = null;
+            path = [ "platform" ];
+          }
+          (
+            define: self: {
+              scope = define.scope { };
+              name = define.fact { scope = self.scope; };
+              said = define.collection { };
 
-          instance = self.scope.instance (input: {
-            type.name = t.str;
-            label = input.name;
-            includes = [ (self.name input.name) ];
-          });
+              instance = self.scope.instance (input: {
+                type.name = t.str;
+                label = input.name;
+                includes = [ (self.name input.name) ];
+              });
 
-          greeter = define.unit (input: {
-            type.greeting = t.str;
-            uses = { inherit (self) name; };
-            provides = { name }: [ (self.said "${input.greeting}, ${name}") ];
-          });
-        }
-      );
+              greeter = define.unit (input: {
+                type.greeting = t.str;
+                uses = { inherit (self) name; };
+                provides = { name }: [ (self.said "${input.greeting}, ${name}") ];
+              });
+            }
+          );
 
-      hosts = rhizome.module { path = [ "hosts" ]; } (
-        _: self: {
-          greeter = platform.greeter { greeting = "hello"; };
-          unit = platform.instance { name = "nas"; } [ self.greeter ];
-        }
-      );
+      hosts =
+        rhizome.module
+          {
+            namespace = null;
+            path = [ "hosts" ];
+          }
+          (
+            _: self: {
+              greeter = platform.greeter { greeting = "hello"; };
+              unit = platform.instance { name = "nas"; } [ self.greeter ];
+            }
+          );
     in
     {
       expr = {
@@ -1190,6 +1231,25 @@ in
         name = "platform.instance";
       };
     };
+
+  # A scope holds nothing to tell it apart, so where it is exported does.
+  testDefinitionsOfOneNameStayApart = {
+    expr =
+      let
+        office = rhizome.module {
+          namespace = null;
+          path = [ ];
+        } (define: _: { scope = define.scope { }; });
+
+        school = rhizome.module {
+          namespace = null;
+          path = [ ];
+        } (define: _: { scope = define.scope { }; });
+      in
+      office.scope.id == school.scope.id;
+
+    expected = false;
+  };
 
   testLoadSaysWhereAnUnnamedDefinitionWasWritten = {
     expr =
