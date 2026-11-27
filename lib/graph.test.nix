@@ -3,21 +3,50 @@
 let
   inherit (rhizome) graph;
 
+  # Routes hold data, not strings: an address for the channel, and a trail
+  # for each end.
+  named = name: {
+    address = rhizome.address.local name;
+    inherit name;
+  };
+
+  trail = map (name: {
+    address = rhizome.address.local name;
+    label = null;
+  });
+
   route = channel: from: to: {
-    inherit channel from to;
+    channel = named channel;
+    from = trail from;
+    to = trail to;
     single = false;
   };
 
+  sender = [
+    "root"
+    "team"
+    "sender"
+  ];
+
+  receiver = [
+    "root"
+    "team"
+    "receiver"
+  ];
+
   routes = [
-    (route "message" "root > team > sender" "root > team > receiver")
-    (route "reply" "root > team > sender" "root > team > receiver")
-    (route "report" "root > team > receiver" "root")
-    {
-      channel = "prefix";
-      single = true;
-      from = "root > team";
-      to = "root > team > sender";
-    }
+    (route "message" sender receiver)
+    (route "reply" sender receiver)
+    (route "report" receiver [ "root" ])
+    (
+      route "prefix" [
+        "root"
+        "team"
+      ] sender
+      // {
+        single = true;
+      }
+    )
   ];
 
   dot = graph.dot routes;
@@ -72,5 +101,37 @@ in
   testDotOfNothingIsAnEmptyGraph = {
     expr = lib.hasPrefix "digraph rhizome {" (graph.dot [ ]) && lib.hasSuffix "}\n" (graph.dot [ ]);
     expected = true;
+  };
+
+  # A label tells instances apart, and a module's path is part of the name.
+  testStepsShowTheirModuleAndLabel = {
+    expr = graph.text [
+      {
+        channel = named "name";
+        single = true;
+
+        from = [
+          {
+            address = rhizome.address.local "root";
+            label = null;
+          }
+          {
+            address = {
+              namespace = "lab";
+              path = [
+                "platform"
+                "host"
+              ];
+              name = "scope";
+            };
+            label = "nas-001";
+          }
+        ];
+
+        to = trail [ "root" ];
+      }
+    ];
+
+    expected = [ "name: root > platform.host.scope[nas-001] -> root" ];
   };
 }

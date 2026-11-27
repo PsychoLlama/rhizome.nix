@@ -1,24 +1,31 @@
 /**
   Renders the routes of an evaluated tree: `(rhizome.eval { } tree).routes`.
 */
-{ lib }:
+{ lib, address }:
 
 let
   /**
-    What joins the parts of a path in a route.
-  */
-  separator = " > ";
-
-  /**
-    A path as a route spells it.
+    A trail as one string. It identifies a node in the graph.
 
     # Type
 
     ```
-    join :: [String] -> String
+    join :: [Step] -> String
     ```
   */
-  join = lib.concatStringsSep separator;
+  join = address.show-trail;
+
+  /**
+    What a node or a scope is labelled with: its own step, without the
+    scopes above it.
+
+    # Type
+
+    ```
+    label :: [Step] -> String
+    ```
+  */
+  label = trail: address.show-step (lib.last trail);
 
   /**
     A string as a quoted Graphviz id.
@@ -42,7 +49,9 @@ in
     text :: [Route] -> [String]
     ```
   */
-  text = routes: lib.unique (map (route: "${route.channel}: ${route.from} -> ${route.to}") routes);
+  text =
+    routes:
+    lib.unique (map (route: "${route.channel.name}: ${join route.from} -> ${join route.to}") routes);
 
   /**
     A Graphviz graph. Scopes are boxes, nodes are components, and an edge is
@@ -59,12 +68,16 @@ in
   dot =
     routes:
     let
-      paths = map (lib.splitString separator) (
-        lib.unique (
-          lib.concatMap (route: [
-            route.from
-            route.to
-          ]) routes
+      # One trail per node, however many routes touch it.
+      paths = lib.attrValues (
+        lib.listToAttrs (
+          lib.concatMap (
+            route:
+            map (trail: lib.nameValuePair (join trail) trail) [
+              route.from
+              route.to
+            ]
+          ) routes
         )
       );
 
@@ -76,14 +89,14 @@ in
       isScope = path: lib.elem path scopes;
       within = parent: path: lib.init path == parent;
 
-      node = path: style: "${quote (join path)} [label=${quote (lib.last path)}${style}];";
+      node = path: style: "${quote (join path)} [label=${quote (label path)}${style}];";
 
       cluster =
         indent: path:
         lib.concatStringsSep "\n" (
           [
             "${indent}subgraph ${quote "cluster ${join path}"} {"
-            "${indent}  label=${quote (lib.last path)};"
+            "${indent}  label=${quote (label path)};"
           ]
           ++ lib.optional (lib.elem path paths) "${indent}  ${node path ", shape=plaintext"}"
           ++ map (path: "${indent}  ${node path ""}") (
@@ -98,10 +111,10 @@ in
         _: group:
         let
           inherit (lib.head group) from to single;
-          label = lib.concatStringsSep "\\n" (lib.unique (map (route: route.channel) group));
+          channels = lib.concatStringsSep "\\n" (lib.unique (map (route: route.channel.name) group));
         in
-        "  ${quote from} -> ${quote to} [label=\"${label}\"${lib.optionalString single ", style=dashed, color=gray50, fontcolor=gray50"}];"
-      ) (lib.groupBy (route: "${route.from}\n${route.to}\n${toString route.single}") routes);
+        "  ${quote (join from)} -> ${quote (join to)} [label=\"${channels}\"${lib.optionalString single ", style=dashed, color=gray50, fontcolor=gray50"}];"
+      ) (lib.groupBy (route: "${join route.from}\n${join route.to}\n${toString route.single}") routes);
     in
     lib.concatStringsSep "\n" (
       [

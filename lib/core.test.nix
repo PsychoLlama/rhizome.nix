@@ -690,6 +690,53 @@ in
     expectedError = failure "channels form a cycle";
   };
 
+  # A route is data: the channel's address, and a trail for each end.
+  testRoutesAreStructured = {
+    expr =
+      builtins.head
+        (rhizome.eval { } (
+          team { prefix = "hello"; } [
+            sender
+            (rhizome.ignore message)
+          ]
+        )).routes;
+
+    expected = {
+      channel = {
+        inherit (prefix) address;
+        name = "prefix";
+      };
+
+      single = true;
+
+      from = [
+        {
+          address = rhizome.address.local "root";
+          label = null;
+        }
+        {
+          inherit (team) address;
+          label = "hello";
+        }
+      ];
+
+      to = [
+        {
+          address = rhizome.address.local "root";
+          label = null;
+        }
+        {
+          inherit (team) address;
+          label = "hello";
+        }
+        {
+          inherit (sender) address;
+          label = null;
+        }
+      ];
+    };
+  };
+
   testRoutes = {
     expr = rhizome.graph.text (
       (rhizome.eval { } (

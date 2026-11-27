@@ -1,46 +1,15 @@
 {
   lib,
+  address,
   types,
 }:
 
 let
   inherit (types) validate;
 
-  /**
-    Where a definition lives: `{ namespace, path, name }`.
-
-    - `namespace`: the tree it was loaded from, or null. Two projects may
-      each have a `services.dns.record`, and they are not the same one.
-    - `path`: the module it is in, as a list: `[ "services" "dns" ]`.
-    - `name`: what the module calls it.
-
-    Kept apart so each reader can render it to suit: an error, a graph, a
-    page of documentation.
-
-    # Type
-
-    ```
-    locally :: String -> Address
-    ```
-  */
-  locally = name: {
-    namespace = null;
-    path = [ ];
-    inherit name;
-  };
-
-  /**
-    An address as one name: `services.dns.record`. It is what you would
-    write after `units.` to reach the definition, so the namespace is left
-    out.
-
-    # Type
-
-    ```
-    display :: Address -> String
-    ```
-  */
-  display = address: lib.concatStringsSep "." (address.path ++ [ address.name ]);
+  locally = address.local;
+  display = address.show;
+  show = address.show-trail;
 
   /**
     Definitions are told apart by their address and by where they were
@@ -456,17 +425,6 @@ let
   ignore = channel: nameComponent (locally "ignore `${channel.name}`") { uses.ignored = channel; };
 
   /**
-    A path as it appears in errors and routes.
-
-    # Type
-
-    ```
-    show :: [String] -> String
-    ```
-  */
-  show = lib.concatStringsSep " > ";
-
-  /**
     Whether a channel, or a level, is among others. Compared by id.
 
     # Type
@@ -489,12 +447,12 @@ let
   distinct = channels: lib.attrValues (lib.listToAttrs (map (c: lib.nameValuePair c.id c) channels));
 
   /**
-    The name a node goes by in paths.
+    The trail to a node: the one it sits under, then a step of its own.
 
     # Type
 
     ```
-    locate :: Context -> Node -> [String]
+    locate :: Context -> Node -> [Step]
     ```
   */
   locate =
@@ -505,7 +463,10 @@ let
     in
     context.path
     ++ [
-      (if label.success && lib.isString label.value then "${node.name}[${label.value}]" else node.name)
+      {
+        inherit (node) address;
+        label = if label.success && lib.isString label.value then label.value else null;
+      }
     ];
 
   /**
@@ -582,7 +543,7 @@ let
         entries = [
           {
             inherit (emission) value;
-            from = where;
+            inherit (context) path;
           }
         ];
       };
@@ -605,7 +566,8 @@ let
   evaluateComponent =
     context: node:
     let
-      where = show (locate context node);
+      path = locate context node;
+      where = show path;
 
       declared = record where "component" (declarations node.name node.definition);
       uses = declared.uses or { };
@@ -664,9 +626,8 @@ let
           throw "rhizome: ${where}: emits `${channel.name}` without declaring it in `emits`"
         else
           {
-            inherit channel;
+            inherit channel path;
             inherit (emission) value;
-            from = where;
           }
       ) (run used);
     in
@@ -679,14 +640,14 @@ let
           channel:
           lib.nameValuePair channel.id {
             inherit channel;
-            entries = map (emission: { inherit (emission) from value; }) (
+            entries = map (emission: { inherit (emission) path value; }) (
               lib.filter (emission: emission.channel.id == channel.id) emissions
             );
           }
         ) emits
       );
 
-      readers = map (channel: { inherit channel where; }) (lib.attrValues uses);
+      readers = map (channel: { inherit channel path where; }) (lib.attrValues uses);
 
       order = lib.concatMap (from: map (to: { inherit from to where; }) emits) (lib.attrValues uses);
       routes = [ ];
@@ -737,9 +698,16 @@ let
         gather inside (node.members ++ ((apply node.definition input).config or [ ]))
       );
 
+      # A merge is given where each value came from as errors spell it.
       slot = channel: entries: {
         inherit channel entries;
-        value = channel.merge entries;
+
+        value = channel.merge (
+          map (entry: {
+            from = show entry.path;
+            inherit (entry) value;
+          }) entries
+        );
       };
 
       # Everything written inside this scope, keyed by channel. Each channel
@@ -797,10 +765,10 @@ let
         ++ lib.concatMap (
           reader:
           map (entry: {
-            channel = reader.channel.name;
+            channel = { inherit (reader.channel) address name; };
             single = single reader.channel;
-            inherit (entry) from;
-            to = reader.where;
+            from = entry.path;
+            to = reader.path;
           }) (entries reader.channel)
         ) readers;
 
@@ -819,7 +787,7 @@ let
         && lib.all (member: member.check) members
         && (
           unread == null
-          || throw "rhizome: ${(lib.head unread.entries).from}: emits `${unread.channel.name}`, which nothing in ${where} uses"
+          || throw "rhizome: ${show (lib.head unread.entries).path}: emits `${unread.channel.name}`, which nothing in ${where} uses"
         )
         && (
           miscounted == null
@@ -831,7 +799,7 @@ let
               "nothing in ${where} provides"
             else
               "has ${toString (lib.length found)} values in ${where} (from ${
-                lib.concatMapStringsSep ", " (entry: entry.from) found
+                lib.concatMapStringsSep ", " (entry: show entry.path) found
               })"
           }"
         );
@@ -905,17 +873,20 @@ let
       /**
         Who talks to whom: one `{ channel, from, to, single }` per value
         that reaches a reader. What reaches the root is read by the caller.
-        `rhizome.graph` renders these.
+
+        Nothing here is rendered. `channel` is `{ address, name }`, and
+        `from` and `to` are trails: see `rhizome.address`. `rhizome.graph`
+        draws them.
       */
       routes =
         result.routes
         ++ lib.concatMap (
           slot:
           map (entry: {
-            channel = slot.channel.name;
+            channel = { inherit (slot.channel) address name; };
             single = slot.channel.merge ? expects;
-            inherit (entry) from;
-            to = "root";
+            from = entry.path;
+            to = locate { path = [ ]; } top;
           }) slot.entries
         ) (lib.filter (slot: slot.channel.level.id == root.id) (lib.attrValues result.pool));
     };
