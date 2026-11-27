@@ -1,3 +1,3 @@
-{ module, ... }:
+{ define, ... }:
 
-module.unit { }
+define.unit { }

@@ -4,19 +4,19 @@ let
   t = rhizome.types;
   inherit (rhizome) merge;
 
-  # Tests define things one at a time. Each is a module of one.
-  define =
+  # Tests make things one at a time. Each is a module of one.
+  make =
     builder: name: definition:
-    (rhizome.module { } (module: _: { ${name} = builder module definition; })).${name};
+    (rhizome.module { } (define: _: { ${name} = builder define definition; })).${name};
 
-  level = define (module: module.level);
-  fact = define (module: module.fact);
-  unit = define (module: module.unit);
-  bundle = define (module: module.group);
-  instance = level: define (_: level.instance);
+  level = make (define: define.level);
+  fact = make (define: define.fact);
+  unit = make (define: define.unit);
+  bundle = make (define: define.group);
+  instance = level: make (_: level.instance);
 
   # Builders taken out of their module, to make what nothing will name.
-  loose = (rhizome.module { } (module: _: { lib = module; })).lib;
+  loose = (rhizome.module { } (define: _: { lib = define; })).lib;
 
   group = level "group" { within = rhizome.root; };
 
@@ -772,11 +772,11 @@ in
             ];
           }
           (
-            module: self: {
-              floor = module.level { within = rhizome.root; };
-              letter = module.fact { merge = merge.list; };
-              writer = module.unit { config = [ (self.letter "dear") ]; };
-              unit = module.group { config = [ self.writer ]; };
+            define: self: {
+              floor = define.level { within = rhizome.root; };
+              letter = define.fact { merge = merge.list; };
+              writer = define.unit { config = [ (self.letter "dear") ]; };
+              unit = define.group { config = [ self.writer ]; };
               office = self.floor.instance { };
 
               lib.stamp = 1;
@@ -828,8 +828,8 @@ in
       letter =
         namespace:
         (rhizome.module { inherit namespace; } (
-          module: _: {
-            letter = module.fact {
+          define: _: {
+            letter = define.fact {
               type = t.str;
               merge = merge.list;
             };
@@ -854,13 +854,13 @@ in
   testRecReachesUnnamedDefinitions =
     let
       mail = rhizome.module { } (
-        module: _: rec {
-          letter = module.fact {
+        define: _: rec {
+          letter = define.fact {
             type = t.str;
             merge = merge.list;
           };
 
-          unit = module.unit { config = [ (letter "dear") ]; };
+          unit = define.unit { config = [ (letter "dear") ]; };
         }
       );
     in

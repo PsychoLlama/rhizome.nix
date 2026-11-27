@@ -11,7 +11,8 @@
   - `rhizome`: the library.
   - `units`: the whole tree, so any unit can reach any other.
   - `self`: what this file returns, with its definitions named.
-  - `module`: the builders `level`, `fact`, `unit` and `group`.
+  - `define`: the builders: `define.level`, `define.fact`, `define.unit`
+    and `define.group`.
 
   A file returns an attrset. Each attribute is a definition, and takes its
   name from the attribute and the file's path: `topic` in
@@ -71,7 +72,7 @@ let
         path = segments;
       }
       (
-        module: self:
+        define: self:
         exports path (
           import path (
             args
@@ -80,7 +81,7 @@ let
                 rhizome
                 units
                 self
-                module
+                define
                 ;
             }
           )

@@ -207,12 +207,12 @@ let
     A module: definitions that live at one path. It hands over the
     builders, and names what is exported after the attribute and the path:
 
-        dns = rhizome.module { path = [ "services" "dns" ]; } (module: self: {
-          record = module.fact { … };                            # services.dns.record
-          unit = module.unit { config = [ (self.record "…") ]; };
+        dns = rhizome.module { path = [ "services" "dns" ]; } (define: self: {
+          record = define.fact { … };                            # services.dns.record
+          unit = define.unit { config = [ (self.record "…") ]; };
         });
 
-    - `module`: the builders `level`, `fact`, `unit` and `group`.
+    - `define`: the builders `level`, `fact`, `unit` and `group`.
       There are no others, so nothing is defined outside a module.
     - `self`: what the module exports, named.
 
@@ -319,7 +319,7 @@ let
   /**
     A kind of place in the tree, such as a datacenter, a host, or a user.
 
-        level = module.level { within = host.level; };
+        level = define.level { within = host.level; };
 
     `within` names the level it belongs inside. The outermost levels are
     within `rhizome.root`.
@@ -367,7 +367,7 @@ let
     Something units state and other units read, without either naming the
     other: a host's name, a tag it carries, a module for its config.
 
-        settings = module.fact {
+        settings = define.fact {
           level = level.user;
           type = t.attrs;
           merge = merge.attrs.recursive;
@@ -420,7 +420,7 @@ let
   /**
     A leaf of the tree. It reads facts and states others.
 
-        git = module.unit {
+        git = define.unit {
           uses = { settings = git.settings; pkgs = host.pkgs; };
           config = { settings, pkgs }: [ (user.file { … }) (user.package pkgs.git) ];
         };
@@ -451,7 +451,7 @@ let
   /**
     Members that belong together, with typed input of their own:
 
-        unit = module.group (cfg: {
+        unit = define.group (cfg: {
           input = vpn.client.input;
           config = [ (vpn.client cfg) (secrets.use { … }) ];
         });

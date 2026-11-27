@@ -1,10 +1,10 @@
-{ rhizome, module, ... }:
+{ rhizome, define, ... }:
 
 rec {
-  letter = module.fact {
+  letter = define.fact {
     type = rhizome.types.str;
     merge = rhizome.merge.list;
   };
 
-  unit = module.unit { config = [ (letter "dear") ]; };
+  unit = define.unit { config = [ (letter "dear") ]; };
 }

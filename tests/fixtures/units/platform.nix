@@ -1,7 +1,7 @@
-{ rhizome, module, ... }:
+{ rhizome, define, ... }:
 
 {
-  said = module.fact {
+  said = define.fact {
     type = rhizome.types.str;
     merge = rhizome.merge.list;
   };

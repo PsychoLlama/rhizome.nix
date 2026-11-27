@@ -2,5 +2,5 @@
 
 {
   # Builders that escaped the module they belong to.
-  unit = (rhizome.module { path = [ "elsewhere" ]; } (module: _: { lib = module; })).lib.unit { };
+  unit = (rhizome.module { path = [ "elsewhere" ]; } (define: _: { lib = define; })).lib.unit { };
 }
