@@ -1,5 +1,5 @@
 { rhizome, ... }:
 
 {
-  unit = (rhizome.module { path = [ "borrowed" ]; }).component "unit" { };
+  unit = (rhizome.module { path = [ "elsewhere" ]; } { unit = rhizome.component { }; }).unit;
 }

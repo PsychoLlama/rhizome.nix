@@ -1,3 +1,3 @@
-{ module, ... }:
+{ rhizome, ... }:
 
-module.component "unit" { }
+rhizome.component { }

@@ -10,15 +10,16 @@
 
   - `rhizome`: the library.
   - `units`: the whole tree, so any unit can reach any other.
-  - `self`: what this file returns.
-  - `module`: the builders, naming what they make after this file's path.
-    In `services/ntfy.nix`, `module.channel "topic"` is `services.ntfy.topic`.
-    The directory being loaded is the namespace, so the same path in
-    another project is a different definition.
+  - `self`: what this file returns, with its definitions named.
 
-  A file returns an attrset. Each attribute is a definition made with
-  `module` under the attribute's own name, except two that pass through
-  untouched: `lib` for functions and `values` for constants.
+  A file returns an attrset. Each attribute is a definition, and takes its
+  name from the attribute and the file's path: `topic` in
+  `services/ntfy.nix` is `services.ntfy.topic`. Two attributes pass through
+  untouched: `lib` for functions and `values` for constants. See
+  `rhizome.module`, which does the naming.
+
+  The directory being loaded is the namespace, so the same path in another
+  project is a different definition.
 
   A directory's `default.nix` holds what belongs to the directory itself.
   Its attributes sit beside the directory's files, and may not share a name
@@ -43,74 +44,31 @@ let
   # so it changes with the source.
   namespace = toString root;
 
-  reserved = [
-    "lib"
-    "values"
-  ];
-
-  kinds = [
-    "channel"
-    "component"
-    "group"
-    "level"
-    "scope"
-  ];
-
   show = lib.concatStringsSep ".";
 
   /**
-    What a file returns, with every attribute checked as it is read: it is a
-    definition, and it is named after where it sits.
+    What a file returns: an attrset to name, never one definition.
 
     # Type
 
     ```
-    check :: Path -> [String] -> Any -> AttrSet
+    exports :: Path -> Any -> AttrSet
     ```
   */
-  check =
-    path: segments: exports:
-    if !lib.isAttrs exports || exports ? kind || exports ? __emission then
+  exports =
+    path: value:
+    if !lib.isAttrs value || value ? kind || value ? __emission then
       throw "rhizome: ${toString path} must return an attrset of definitions"
     else
-      lib.mapAttrs (
-        attribute: value:
-        let
-          expected = show (segments ++ [ attribute ]);
-
-          address = {
-            inherit namespace;
-            path = segments;
-            name = attribute;
-          };
-        in
-        if lib.elem attribute reserved then
-          value
-        else if !(lib.isAttrs value && lib.elem (value.kind or null) kinds) then
-          throw "rhizome: `${expected}` is not a definition. Functions belong in `lib` and constants in `values`"
-        else if value.address != address then
-          throw "rhizome: `${expected}` holds a ${value.kind} named `${value.name}`${
-            lib.optionalString (value.address.namespace != namespace) ", made by another module"
-          }. Make it with this file's `module`, under the attribute's name"
-        else
-          value
-      ) exports;
+      value;
 
   file =
     path: segments:
     let
-      self = check path segments (
-        import path (
-          args
-          // {
-            inherit rhizome units self;
-            module = rhizome.module {
-              inherit namespace;
-              path = segments;
-            };
-          }
-        )
-      );
+      self = rhizome.module {
+        inherit namespace;
+        path = segments;
+      } (exports path (import path (args // { inherit rhizome units self; })));
     in
     self;
 
