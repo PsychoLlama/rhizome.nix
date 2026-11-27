@@ -1,11 +1,13 @@
 # types
 
-Validators for channel values and for the input of components and scopes. They check a value and never merge it. Conventionally bound as `t = rhizome.types`.
+Validators for what is stated and for the input of units, groups and instances. They check a value and never combine it. A file receives them as `types`; outside one they are `rhizome.types`. The examples bind them as `t`.
 
 ## Primitives
 
 - `t.str`, `t.int`, `t.bool`, `t.null`, `t.attrs`, `t.function`.
-- `t.any`: accepts everything. Use it for values rhizome cannot describe, such as a module or a path.
+- `t.path`: a Nix path, a derivation, or a string holding an absolute path. Nothing is checked on disk.
+- `t.module`: a module for NixOS, Home Manager and the like: a function, an attrset, or a path.
+- `t.any`: accepts everything. Use it for values rhizome cannot describe.
 
 ## Combinators
 
@@ -24,9 +26,9 @@ Validators for channel values and for the input of components and scopes. They c
 
 ## Reuse
 
-- `channel.type` is a channel's type. Prefer it to repeating the type: `type.name = user.name.type`, not `type.name = t.str`.
+- `fact.type` is the type of a fact or collection. Prefer it to repeating the type: `type.name = user.name.type`, not `type.name = t.str`.
 - It composes like any other type: `t.list firewall.port.type`.
-- A record type is an ordinary attrset. Extend it with `//`, or expose it as an attribute of a unit for others to build on.
+- A record type is an ordinary attrset. Extend it with `//`.
 - See [configuration](../guides/configuration.md) for why.
 
 ## Functions

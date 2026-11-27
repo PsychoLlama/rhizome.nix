@@ -4,27 +4,27 @@ A unit can be made configurable in four ways. They differ in who decides and how
 
 ## Typed input
 
-- The component or scope declares `type` and is a function of `cfg`. Whoever includes it decides.
+- The unit, group or instance declares `type` and is a function of `input`. Whoever includes it decides.
 - Use it for what one includer knows: `(backup.unit { path = "/srv/photos"; })`.
-- Two inclusions with different input are two instances. Use that for things that can exist twice, and avoid it for things that cannot.
+- Two inclusions with different input are two uses. Use that for things that can exist twice, and avoid it for things that cannot.
 - Give fields a `t.default` when most includers should not have to care.
 
-## A single-value channel
+## A fact
 
-- A channel with `merge.one`, or `merge.one-or-none`: one writer anywhere in the scope decides.
+- One statement anywhere in the instance decides.
 - Use it for what must have exactly one answer, wherever it comes from: a user's identity, which package provides a program.
-- The unit stays a singleton. Any member of the scope can supply the value, not only the includer.
-- With `merge.one` a missing value is an error. With `merge.one-or-none` the reader falls back to its own default.
+- The unit stays a singleton. Any member of the instance can state the value, not only the includer.
+- Without a `default` a missing value is an error. With one, readers receive the default.
 
-## A merged channel
+## A collection
 
-- A channel with `merge.list` or `merge.attrs.recursive`: every unit may contribute.
+- Every unit may add to it.
 - Use it for what accumulates: settings, aliases, plugins, firewall ports.
 - This is how one unit extends another without the other knowing.
 
-## A plain attribute
+## A constant
 
-- A constant other units read straight off the unit: `postgres.port`.
+- A value other files read straight off the file: `postgres.values.port`.
 - Use it when the value does not depend on the tree.
 
 ## Together
@@ -32,29 +32,34 @@ A unit can be made configurable in four ways. They differ in who decides and how
 One program usually wants several at once. Git has one identity, at most one package override, and settings from anyone:
 
 ```nix
-rhizome.unit "git" (git: {
-  identity = rhizome.channel {
-    level = user.level;
+{ lib, types, units, self, define, ... }:
+
+let
+  t = types;
+  inherit (units.platform) home-manager user;
+in
+
+{
+  identity = define.fact {
+    scope = user.scope;
     type = { name = t.str; email = t.str; };
-    merge = rhizome.merge.one;
   };
 
-  package = rhizome.channel {
-    level = user.level;
+  package = define.fact {
+    scope = user.scope;
     type = t.function;
-    merge = rhizome.merge.one-or-none;
+    default = pkgs: pkgs.git;
   };
 
-  settings = rhizome.channel {
-    level = user.level;
+  settings = define.collection {
+    scope = user.scope;
     type = t.attrs;
-    merge = rhizome.merge.attrs.recursive;
   };
 
-  unit = rhizome.component {
-    uses = { inherit (git) identity package settings; };
+  unit = define.unit {
+    uses = { inherit (self) identity package settings; };
 
-    config =
+    provides =
       { identity, package, settings }:
       [
         (home-manager.module (
@@ -62,23 +67,24 @@ rhizome.unit "git" (git: {
           {
             programs.git = {
               enable = true;
-              package = if package == null then pkgs.git else package pkgs;
-              settings = settings // { user = identity; };
+              package = package pkgs;
+              settings = lib.mkMerge (settings ++ [ { user = identity; } ]);
             };
           }
         ))
       ];
   };
-})
+}
 ```
 
-- A user's scope writes `git.identity` once.
-- A pager unit writes `(git.settings { core.pager = "delta"; })`. Two units setting the same key differently is an error naming both.
+- A user's instance states `git.identity` once.
+- A pager unit adds `(git.settings { core.pager = "delta"; })`. The module system merges the settings, so two units setting one key differently is its error to report.
 - `git.unit` is still included plainly, by any number of profiles, and is one git.
 
 ## Reusing types
 
-- Take a type from the channel that carries the value: `type.name = user.name.type`, not `type.name = t.str`.
-- A scope whose input becomes facts should type each field from its fact's channel.
-- A record that holds another channel's values says so: `t.list firewall.port.type`.
-- Change the channel and every input that feeds it follows. Repeat the type and they drift.
+- Take a type from the fact that carries the value: `type.name = user.name.type`, not `type.name = t.str`.
+- An instance whose input becomes facts should type each field from its fact.
+- A record that holds another collection's values says so: `t.list firewall.port.type`.
+- Change the fact and every input that feeds it follows. Repeat the type and they drift.
+- Facts that always arrive together can be one fact holding a record. Then the instance's input type is that fact's type.

@@ -1,10 +1,10 @@
 # Project
 
 - `docs/spec/` says what rhizome is for: the problem, goals and constraints. Read it before changing the model. A change that serves no goal there, or breaks a constraint, needs the spec changed first.
-- Rhizome: typed channels for composing Nix configuration.
-- Four entities: level, channel, component, scope. `rhizome.unit` names a group of them after their attributes.
+- Rhizome: typed facts and collections for composing Nix configuration.
+- Six kinds of definition: scope, instance, fact, collection, unit, group. A file's `define` makes them and `rhizome.module` names them after their attributes.
 - `lib/load.nix` loads a directory of unit files.
-- `lib/core.nix` defines and evaluates them. `types.nix`, `merge.nix` and `graph.nix` are independent of it.
+- `lib/core.nix` defines and evaluates them. `types.nix`, `address.nix` and `graph.nix` are independent of it.
 - Pure evaluation. The only dependency is nixpkgs' `lib`.
 - `README.md` is the pitch: what rhizome is and why. No reference material.
 - `agents/skills/rhizome/` is the documentation, published as a Claude Code plugin: `concepts/`, `reference/` and `guides/`, one page per topic, indexed by `SKILL.md`. Keep it in step with the code.

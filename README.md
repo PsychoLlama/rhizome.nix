@@ -16,10 +16,10 @@ The downsides grow with the scale of your ambition:
 - Dependencies and effects are global. Tracing a change requires searching the codebase.
 - Getting data, configs, or packages out means evaluating a whole system.
 
-Rhizome sits above the module system. Units read and write typed channels, and a tree of scopes (hosts, users) decides who sees what.
+Rhizome sits above the module system. Units state typed facts and read them, and a tree of instances (hosts, users) decides who sees what.
 
 - Dependencies are explicit. A missing or unread value is an error naming the unit.
-- Scopes nest. Two hosts can configure the same unit differently.
+- Instances nest. Two hosts can configure the same unit differently.
 - Units are plain values with no global namespace.
 - One tree produces many outputs: NixOS/HM/Darwin modules, Prometheus scrape targets, Terraform inputs, etc.
 
@@ -29,45 +29,55 @@ A laptop, two users, and units configuring `git` and `delta` programs.
 
 ```nix
 # units/programs/git.nix
-rhizome.unit "git" (git: {
-  unit = rhizome.component {
-    uses.settings = git.settings;
+{ lib, types, units, self, define, ... }:
 
-    config = { settings }: [
-      (home-manager.module {
+{
+  # Other units can add to this. One per user.
+  settings = define.collection {
+    scope = units.platform.user.scope;
+    type = types.attrs;
+  };
+
+  unit = define.unit {
+    uses.settings = self.settings;
+
+    provides = { settings }: [
+      (units.platform.home-manager.module {
         programs.git = {
           enable = true;
-          inherit settings;
+          settings = lib.mkMerge settings;
         };
       })
     ];
   };
-
-  # A channel other units can write to.
-  settings = rhizome.channel {
-    level = user.level; # Make it unique per user.
-    type = rhizome.types.attrs;
-    merge = rhizome.merge.attrs.recursive;
-  };
-})
+}
 ```
 
 ```nix
 # units/programs/delta.nix
-rhizome.unit "delta" {
+{ units, define, ... }:
+
+{
   # Another unit configures git's diff viewer.
-  unit = rhizome.component [
-    (git.settings { core.pager = "delta"; })
-  ];
+  unit = define.unit {
+    provides = [ (units.programs.git.settings { core.pager = "delta"; }) ];
+  };
 }
 ```
 
 ```nix
 # units/hosts/laptop.nix
-rhizome.unit "laptop" {
-  unit = host.scope { name = "laptop"; } [
-    (user.scope { name = "gill"; } [ git.unit delta.unit ])
-    (user.scope { name = "bates"; } [ git.unit ])
+{ units, ... }:
+
+let
+  inherit (units.platform) host user;
+  inherit (units.programs) git delta;
+in
+
+{
+  unit = host.instance { name = "laptop"; } [
+    (user.instance { name = "gill"; } [ git.unit delta.unit ])
+    (user.instance { name = "bates"; } [ git.unit ])
   ];
 }
 ```
