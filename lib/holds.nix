@@ -76,20 +76,6 @@ let
           lib.concatStringsSep "." (path ++ [ name ])
         }` is set by both ${first.from} and ${different.from}"
     ) (map spread entries);
-  /**
-    A function of entries that knows its own name, so a fact can say how
-    it is read.
-
-    # Type
-
-    ```
-    named :: String -> ([Entry] -> Any) -> Strategy
-    ```
-  */
-  named = name: combine: {
-    inherit name;
-    __functor = _: combine;
-  };
 in
 
 {
@@ -132,8 +118,7 @@ in
     else
       {
         count = "many";
-        as = if lib.isAttrs combine then combine.name or null else null;
-        inherit combine;
+        as = combine;
       };
 
   as = {
@@ -146,7 +131,7 @@ in
       as.list :: [Entry] -> [Any]
       ```
     */
-    list = named "list" values;
+    list = values;
 
     /**
       The values, each with who stated it.
@@ -157,7 +142,7 @@ in
       as.entries :: [Entry] -> [Entry]
       ```
     */
-    entries = named "entries" lib.id;
+    entries = lib.id;
 
     /**
       The values with duplicates removed.
@@ -168,7 +153,7 @@ in
       as.unique :: [Entry] -> [Any]
       ```
     */
-    unique = named "unique" (entries: lib.unique (values entries));
+    unique = entries: lib.unique (values entries);
 
     /**
       Deep attrset union. Two statements setting one leaf differently is an
@@ -180,6 +165,6 @@ in
       as.attrs :: [Entry] -> AttrSet
       ```
     */
-    attrs = named "attrs" (mergeAttrs [ ]);
+    attrs = mergeAttrs [ ];
   };
 }

@@ -432,12 +432,12 @@ let
 
         # Plain data, so a tool can tell what a fact holds:
         # `{ count = "one"; default = null | { value }; }` or
-        # `{ count = "many"; as = <name> | null; combine; }`.
+        # `{ count = "many"; as = <function of the entries>; }`.
         holds =
           if !(lib.isAttrs chosen && chosen ? count) then
             throw "rhizome: fact `${name}`: `holds` is `one`, `one.with-default <value>` or `many <how>`"
           else if chosen.count == "many" then
-            { inherit (chosen) count as combine; }
+            { inherit (chosen) count as; }
           else
             {
               inherit (chosen) count;
@@ -495,7 +495,7 @@ let
   resolve =
     fact: entries:
     if fact.holds.count == "many" then
-      fact.holds.combine entries
+      fact.holds.as entries
     else if entries != [ ] then
       (lib.head entries).value
     else if fact.holds.default != null then

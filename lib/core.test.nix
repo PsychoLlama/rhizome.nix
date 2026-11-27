@@ -446,8 +446,11 @@ in
       [
         { inherit (facts.name.holds) count default; }
         { inherit (facts.motto.holds) count default; }
-        { inherit (facts.tag.holds) count as; }
-        { inherit (facts.total.holds) count as; }
+        { inherit (facts.tag.holds) count; }
+        (facts.total.holds.as [
+          1
+          2
+        ])
       ];
 
     expected = [
@@ -459,14 +462,8 @@ in
         count = "one";
         default.value = "none";
       }
-      {
-        count = "many";
-        as = "list";
-      }
-      {
-        count = "many";
-        as = null;
-      }
+      { count = "many"; }
+      2
     ];
   };
 

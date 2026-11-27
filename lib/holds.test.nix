@@ -59,18 +59,9 @@ in
     };
   };
 
-  testManyNamesHowItIsRead = {
-    expr = [
-      (many as.list).as
-      (many as.attrs).as
-      (many (entries: entries)).as
-    ];
-
-    expected = [
-      "list"
-      "attrs"
-      null
-    ];
+  testManyKeepsHowItIsRead = {
+    expr = (many as.list).as [ (entry "a" 1) ];
+    expected = [ 1 ];
   };
 
   testManyTakesAFunction = {
